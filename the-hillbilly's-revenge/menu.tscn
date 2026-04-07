@@ -1,26 +1,46 @@
 [gd_scene format=3 uid="uid://qttoe7gljvrf"]
 
 [ext_resource type="Script" uid="uid://cs231j51mcvrf" path="res://menu.gd" id="1_lti8b"]
+[ext_resource type="VideoStream" uid="uid://ccka8c1p80vrd" path="res://фон.ogv" id="2_ouk20"]
+
+[sub_resource type="Animation" id="Animation_mae5d"]
+resource_name = "new_animation"
+
+[sub_resource type="AnimationLibrary" id="AnimationLibrary_4hy44"]
+_data = {
+&"new_animation": SubResource("Animation_mae5d")
+}
 
 [node name="Menu" type="Node2D" unique_id=398316611]
 script = ExtResource("1_lti8b")
 
-[node name="Play" type="Button" parent="." unique_id=1505651255]
-offset_left = -1.0
-offset_top = 346.0
-offset_right = 359.0
-offset_bottom = 414.0
+[node name="AnimationPlayer" type="AnimationPlayer" parent="." unique_id=1910343513]
+libraries/ = SubResource("AnimationLibrary_4hy44")
+
+[node name="VideoStreamPlayer" type="VideoStreamPlayer" parent="AnimationPlayer" unique_id=947259872]
+offset_right = 1153.0
+offset_bottom = 649.0
+audio_track = 15
+stream = ExtResource("2_ouk20")
+autoplay = true
+loop = true
+
+[node name="Play" type="Button" parent="AnimationPlayer" unique_id=1505651255]
+offset_left = 61.0
+offset_top = 368.0
+offset_right = 418.0
+offset_bottom = 445.0
 theme_override_font_sizes/font_size = 50
 text = "Play"
 
-[node name="Quit" type="Button" parent="." unique_id=1583240582]
-offset_left = -1.0
-offset_top = 455.0
-offset_right = 359.0
-offset_bottom = 523.0
+[node name="Quit" type="Button" parent="AnimationPlayer" unique_id=1583240582]
+offset_left = 62.0
+offset_top = 480.0
+offset_right = 422.0
+offset_bottom = 557.0
 theme_override_font_sizes/font_size = 50
 text = "Quit
 "
 
-[connection signal="pressed" from="Play" to="." method="_on_play_pressed"]
-[connection signal="pressed" from="Quit" to="." method="_on_quit_pressed"]
+[connection signal="pressed" from="AnimationPlayer/Play" to="." method="_on_play_pressed"]
+[connection signal="pressed" from="AnimationPlayer/Quit" to="." method="_on_quit_pressed"]
