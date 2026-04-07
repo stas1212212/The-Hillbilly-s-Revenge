@@ -1,0 +1,13 @@
+[gd_scene format=3 uid="uid://lpakic5ckegt"]
+
+[ext_resource type="Script" uid="uid://dtygs3evsnpmp" path="res://level.gd" id="1_u52ul"]
+
+[node name="level" type="Node2D" unique_id=1977393580]
+script = ExtResource("1_u52ul")
+
+[node name="Label" type="Label" parent="." unique_id=202201526]
+offset_left = 350.0
+offset_top = 123.0
+offset_right = 571.0
+offset_bottom = 243.0
+text = "xya"
