@@ -1,0 +1,20 @@
+[gd_scene format=3 uid="uid://qttoe7gljvrf"]
+
+[node name="Menu" type="Node2D" unique_id=398316611]
+
+[node name="Play" type="Button" parent="." unique_id=1505651255]
+offset_left = -1.0
+offset_top = 346.0
+offset_right = 359.0
+offset_bottom = 414.0
+theme_override_font_sizes/font_size = 50
+text = "Play"
+
+[node name="Quit" type="Button" parent="." unique_id=1583240582]
+offset_left = -1.0
+offset_top = 455.0
+offset_right = 359.0
+offset_bottom = 523.0
+theme_override_font_sizes/font_size = 50
+text = "Quit
+"
