@@ -1,8 +1,42 @@
 [gd_scene format=3 uid="uid://dec0afuwcnku4"]
 
 [ext_resource type="Script" path="res://level.gd" id="1_u52ul"]
+[ext_resource type="Texture2D" uid="uid://c0kvnux0ojap5" path="res://assets/New Start (Book King)/Демона книжка в темряві.png" id="2_1ainy"]
+[ext_resource type="Texture2D" uid="uid://brkwvmkm2v8kg" path="res://assets/New Start (Book King)/Демонична книга з палаючими очима (1).png" id="3_n6hdu"]
+[ext_resource type="Texture2D" uid="uid://d15yyhnfxvnig" path="res://assets/New Start (Book King)/Демонична книга з палаючими очима.png" id="4_km5ld"]
+[ext_resource type="Texture2D" uid="uid://duh02ylnd3u5u" path="res://assets/New Start (Book King)/Диявольська книга з огидними очима.png" id="5_i2t4f"]
+[ext_resource type="Texture2D" uid="uid://cquj0ivu8utwm" path="res://assets/New Start (Book King)/Древня книга з демоничними очима.png" id="6_8cye3"]
+
+[sub_resource type="SpriteFrames" id="SpriteFrames_2orkt"]
+animations = [{
+"frames": [{
+"duration": 1.0,
+"texture": ExtResource("2_1ainy")
+}, {
+"duration": 1.0,
+"texture": ExtResource("3_n6hdu")
+}, {
+"duration": 1.0,
+"texture": ExtResource("4_km5ld")
+}, {
+"duration": 1.0,
+"texture": ExtResource("5_i2t4f")
+}, {
+"duration": 1.0,
+"texture": ExtResource("6_8cye3")
+}],
+"loop": true,
+"name": &"default",
+"speed": 2.0
+}]
 
 [node name="level" type="Node2D" unique_id=1977393580]
 script = ExtResource("1_u52ul")
 
-[node name="Sprite2D" type="Sprite2D" parent="." unique_id=1205960052]
+[node name="Node2D" type="Node2D" parent="." unique_id=2136461537]
+
+[node name="AnimatedSprite2D" type="AnimatedSprite2D" parent="Node2D" unique_id=785988838]
+position = Vector2(578, 325.5)
+scale = Vector2(1.1230469, 0.633789)
+sprite_frames = SubResource("SpriteFrames_2orkt")
+frame_progress = 0.54689664
