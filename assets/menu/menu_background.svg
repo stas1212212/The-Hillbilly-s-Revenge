@@ -1,0 +1,27 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1280" height="720" viewBox="0 0 1280 720">
+<defs>
+<radialGradient id="sky"><stop stop-color="#703e48"/><stop offset=".48" stop-color="#292432"/><stop offset="1" stop-color="#0b111b"/></radialGradient>
+<radialGradient id="moon"><stop stop-color="#f4d4bf"/><stop offset=".78" stop-color="#c78283"/><stop offset="1" stop-color="#6c3e52"/></radialGradient>
+<linearGradient id="sword" x2="0" y2="1"><stop stop-color="#f1dfd2"/><stop offset=".5" stop-color="#a49aa5"/><stop offset="1" stop-color="#4a3340"/></linearGradient>
+</defs>
+<rect width="1280" height="720" fill="url(#sky)"/>
+<circle cx="1000" cy="205" r="190" fill="url(#moon)" opacity=".9"/>
+<g fill="#402c39" opacity=".6"><circle cx="950" cy="160" r="34"/><circle cx="1060" cy="215" r="42"/><circle cx="970" cy="268" r="18"/><circle cx="1080" cy="105" r="23"/></g>
+<path d="M0 520 Q200 445 340 510 Q490 470 620 505 Q760 405 900 475 Q1070 400 1280 490 V720 H0Z" fill="#161b25"/>
+<path d="M0 590 Q280 530 450 590 Q600 535 750 595 Q970 480 1280 575 V720 H0Z" fill="#10151c"/>
+<g fill="#080d15"><path d="M1150 540 L1160 405 L1130 460 L1146 450 L1110 510 L1140 493 L1120 550Z"/><path d="M1210 570 L1225 375 L1180 450 L1205 430 L1175 490 L1200 475 L1160 555Z"/><path d="M1260 550 L1275 415 L1245 465 L1258 450 L1230 520Z"/></g>
+<!-- Young hero silhouette in side profile, high collar, cape and tousled hair -->
+<path d="M945 630 Q860 540 890 385 Q855 345 865 310 L910 280 L920 240 L900 217 L906 186 L892 171 L922 157 L903 139 L940 145 L952 119 L971 141 L997 128 L1008 158 L1032 158 L1022 181 L1044 196 L1030 217 L1004 225 L1005 255 L1037 278 L1105 310 L1140 410 L1200 520 L1110 492 L1170 635 Z" fill="#0a0c13"/>
+<path d="M997 194 L1039 207 L1018 222 L1000 217" fill="#090b11"/>
+<path d="M894 311 Q836 355 790 440 L702 548 L854 504 L927 412Z" fill="#090b12"/>
+<path d="M905 302 L925 289 L957 310 L1020 287 L1058 314 L1000 341 L942 345Z" fill="#14141b"/>
+<!-- Sword planted into foreground -->
+<path d="M1040 405 L1070 412 L955 690 L935 680Z" fill="url(#sword)" stroke="#19121b" stroke-width="7"/>
+<path d="M1007 445 L1105 468" stroke="#2b2028" stroke-width="15" stroke-linecap="round"/>
+<path d="M1007 445 L1105 468" stroke="#b7a4a0" stroke-width="4" stroke-linecap="round"/>
+<path d="M1054 448 L1077 397" stroke="#261923" stroke-width="16" stroke-linecap="round"/>
+<circle cx="1079" cy="391" r="13" fill="#8b6061" stroke="#281b23" stroke-width="7"/>
+<path d="M0 672 Q210 626 420 673 Q710 640 950 677 Q1100 650 1280 670 V720 H0Z" fill="#090c11"/>
+<g stroke="#5c2734" stroke-width="3" fill="none" opacity=".8"><path d="M0 15 Q260 0 390 68"/><path d="M0 40 Q110 120 180 128"/><path d="M1240 0 Q1120 80 1110 110"/></g>
+<g fill="#8c3444" opacity=".85"><ellipse cx="215" cy="44" rx="12" ry="5" transform="rotate(24 215 44)"/><ellipse cx="150" cy="90" rx="10" ry="5" transform="rotate(-22 150 90)"/><ellipse cx="1160" cy="60" rx="12" ry="5"/></g>
+</svg>
