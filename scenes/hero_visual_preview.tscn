@@ -1,13 +1,16 @@
-[gd_scene load_steps=3 format=3]
+[gd_scene load_steps=4 format=3]
 
 [ext_resource type="Script" path="res://scripts/actors/hero_visual_preview.gd" id="1"]
 [ext_resource type="Texture2D" path="res://assets/characters/hero_teen_side.svg" id="2"]
+
+[sub_resource type="RectangleShape2D" id="RectangleShape2D_ground"]
+size = Vector2(1200, 30)
 
 [node name="HeroVisualPreview" type="Node2D"]
 script = ExtResource("1")
 
 [node name="Ground" type="StaticBody2D" parent="."]
-position = Vector2(0, 590)
+position = Vector2(640, 590)
 
 [node name="CollisionShape2D" type="CollisionShape2D" parent="Ground"]
 shape = SubResource("RectangleShape2D_ground")
@@ -15,6 +18,3 @@ shape = SubResource("RectangleShape2D_ground")
 [node name="Hero" type="Sprite2D" parent="."]
 position = Vector2(480, 463)
 texture = ExtResource("2")
-
-[sub_resource type="RectangleShape2D" id="RectangleShape2D_ground"]
-size = Vector2(1200, 30)
