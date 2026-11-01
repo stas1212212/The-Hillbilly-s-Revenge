@@ -1,40 +1,62 @@
-[gd_scene load_steps=6 format=3]
-[ext_resource type="Script" path="res://scripts/levels/field_backdrop.gd" id="1"]
+[gd_scene load_steps=5 format=3]
+
+[ext_resource type="Texture2D" path="res://assets/backgrounds/field_prologue_bg.png" id="1"]
 [ext_resource type="Script" path="res://scripts/actors/hero_controller.gd" id="2"]
 [ext_resource type="Texture2D" path="res://assets/characters/hero/hero_idle.png" id="3"]
-[sub_resource type="RectangleShape2D" id="ground"]
-size = Vector2(4200, 80)
-[sub_resource type="CapsuleShape2D" id="hero"]
+
+[sub_resource type="RectangleShape2D" id="ground_shape"]
+size = Vector2(2100, 96)
+
+[sub_resource type="CapsuleShape2D" id="hero_shape"]
 radius = 20.0
 height = 94.0
+
 [node name="FieldPrologue" type="Node2D"]
-[node name="FieldBackdrop" type="Node2D" parent="."]
-script = ExtResource("1")
+
+[node name="Background" type="Sprite2D" parent="."]
+position = Vector2(640, 360)
+scale = Vector2(0.7655, 0.7655)
+texture = ExtResource("1")
+
 [node name="Ground" type="StaticBody2D" parent="."]
-position = Vector2(1100, 632)
+position = Vector2(640, 651)
+
 [node name="CollisionShape2D" type="CollisionShape2D" parent="Ground"]
-shape = SubResource("ground")
+shape = SubResource("ground_shape")
+
 [node name="Hero" type="CharacterBody2D" parent="."]
-position = Vector2(250, 537)
+position = Vector2(430, 575)
 script = ExtResource("2")
+
 [node name="Sprite2D" type="Sprite2D" parent="Hero"]
 position = Vector2(0, -38)
 scale = Vector2(0.25, 0.25)
 texture = ExtResource("3")
+
 [node name="CollisionShape2D" type="CollisionShape2D" parent="Hero"]
-shape = SubResource("hero")
+shape = SubResource("hero_shape")
+
 [node name="Camera2D" type="Camera2D" parent="Hero"]
-position = Vector2(310, -140)
-zoom = Vector2(0.9, 0.9)
+position = Vector2(210, -110)
 limit_left = 0
-limit_top = -200
-limit_right = 2200
-limit_bottom = 760
+limit_top = 0
+limit_right = 1280
+limit_bottom = 720
+
 [node name="CanvasLayer" type="CanvasLayer" parent="."]
-[node name="Hint" type="Label" parent="CanvasLayer"]
-offset_left = 25.0
-offset_top = 24.0
-offset_right = 850.0
-offset_bottom = 70.0
-theme_override_font_sizes/font_size = 21
-text = "ПОЛЕ У ДЕРЕВНИ  |  A/D — идти  |  Space — прыгать  |  Esc — меню"
+
+[node name="LocationLabel" type="Label" parent="CanvasLayer"]
+offset_left = 26.0
+offset_top = 22.0
+offset_right = 620.0
+offset_bottom = 60.0
+theme_override_font_sizes/font_size = 20
+text = "ПОЛЕ У ДЕРЕВНИ"
+
+[node name="HintLabel" type="Label" parent="CanvasLayer"]
+offset_left = 26.0
+offset_top = 48.0
+offset_right = 820.0
+offset_bottom = 85.0
+theme_override_font_sizes/font_size = 16
+text = "A/D — идти   •   Space — прыгать   •   Esc — меню"

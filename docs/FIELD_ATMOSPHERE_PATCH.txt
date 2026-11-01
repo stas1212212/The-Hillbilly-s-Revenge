@@ -1,0 +1,21 @@
+ATMOSPHERIC FIELD PROLOGUE PATCH
+=================================
+
+Что внутри:
+- assets/backgrounds/field_prologue_bg.png
+  Атмосферный рисованный фон: золотое поле, мельница и мирная деревня.
+- scenes/field_prologue.tscn
+  Обновлённая первая игровая сцена, использующая этот фон.
+
+Как установить:
+1. Закрой запущенную игру в Godot.
+2. Распакуй содержимое архива в корень проекта, рядом с project.godot.
+3. Подтверди замену файла scenes/field_prologue.tscn.
+4. Открой сцену scenes/field_prologue.tscn или запусти проект через F5.
+
+Примечания:
+- Сцена ожидает, что в проекте уже существуют:
+  res://scripts/actors/hero_controller.gd
+  res://assets/characters/hero/hero_idle.png
+- Фон интегрирован как художественный задник.
+- Godot сам создаст import-файлы после первого открытия проекта.
