@@ -1,6 +1,6 @@
 extends Control
 
-const GAME_SCENE := "res://scenes/main.tscn"
+const GAME_SCENE := "res://scenes/field_prologue.tscn"
 const ART_PATH := "res://assets/menu/menu_art.png"
 const FALLBACK := preload("res://assets/menu/menu_background.svg")
 
@@ -91,7 +91,7 @@ func _build() -> void:
 
     message_panel = _panel("ИНФОРМАЦИЯ")
     var description := Label.new()
-    description.text = "Пошел нахуй"
+    description.text = "Раздел находится в разработке."
     description.add_theme_font_size_override("font_size", 17)
     message_panel.get_node("Margin/VBox").add_child(description)
     _back_button(message_panel)
@@ -132,7 +132,7 @@ func _back_button(panel: PanelContainer) -> void:
 func _layout() -> void:
     if ui_layer == null:
         return
-    var scale_factor := minf(size.x / 1280.0, size.y / 720.0)
+    var scale_factor := maxf(size.x / 1280.0, size.y / 720.0)
     ui_layer.scale = Vector2.ONE * scale_factor
     ui_layer.position = (size - Vector2(1280, 720) * scale_factor) / 2.0
     atmosphere.position = ui_layer.position
