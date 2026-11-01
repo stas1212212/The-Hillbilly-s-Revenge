@@ -29,6 +29,7 @@ var already_hit: Array[Node] = []
 
 func _ready() -> void:
     health = max_health
+    _load_optional_sprite_strips()
     visual_origin = art.position
     attack_box.monitoring = false
     attack_shape.disabled = true
@@ -144,6 +145,42 @@ func receive_hit(damage: int, impulse: Vector2) -> void:
         died.emit()
     else:
         _play_if_available("hurt")
+
+
+## Import the optional 256x256, five-column character strips supplied in the art patch.
+## The original one-frame SpriteFrames remain usable if the art has not been installed.
+func _load_optional_sprite_strips() -> void:
+    var names: Array[String] = [
+        "idle", "walk", "run", "jump", "fall",
+        "attack_1", "attack_2", "attack_3", "hurt", "death"
+    ]
+    var directory := "res://assets/characters/hero/sprites/"
+    if not ResourceLoader.exists(directory + "idle.png"):
+        return
+    var frames := art.sprite_frames.duplicate(true) as SpriteFrames
+    for name in names:
+        var path := directory + name + ".png"
+        if not ResourceLoader.exists(path):
+            continue
+        var texture := load(path) as Texture2D
+        if texture == null:
+            continue
+        if not frames.has_animation(name):
+            frames.add_animation(name)
+        for i in range(frames.get_frame_count(name) - 1, -1, -1):
+            frames.remove_frame(name, i)
+        var count: int = texture.get_width() / 256
+        for i in range(count):
+            var atlas := AtlasTexture.new()
+            atlas.atlas = texture
+            atlas.region = Rect2(i * 256, 0, 256, 256)
+            frames.add_frame(name, atlas)
+        frames.set_animation_speed(name, 16.0 if name == "run" else 12.0)
+        frames.set_animation_loop(name, name in ["idle", "walk", "run"])
+    art.sprite_frames = frames
+    art.scale = Vector2(0.6, 0.6)
+    art.position.y = -14.0
+    art.play("idle")
 
 func _unhandled_input(event: InputEvent) -> void:
     if event.is_action_pressed("ui_cancel"):
