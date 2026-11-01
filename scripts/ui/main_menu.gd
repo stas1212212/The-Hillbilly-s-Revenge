@@ -1,138 +1,166 @@
 extends Control
 
 const GAME_SCENE := "res://scenes/main.tscn"
-const BG := preload("res://assets/menu/menu_background.svg")
+const ART_PATH := "res://assets/menu/menu_art.png"
+const FALLBACK := preload("res://assets/menu/menu_background.svg")
 
-var main_panel: VBoxContainer
-var settings_panel: VBoxContainer
-var info_panel: VBoxContainer
+var ui_layer: Control
 var background: TextureRect
-var shade: ColorRect
-var title_label: Label
-var status_label: Label
+var atmosphere: Node2D
+var menu_buttons: Array[Button] = []
+var menu_time := 0.0
+var hovered_index := -1
+var hover_progress: Array[float] = [0.0, 0.0, 0.0, 0.0, 0.0, 0.0]
+var settings_panel: PanelContainer
+var message_panel: PanelContainer
 
 func _ready() -> void:
     set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
-    _build_ui()
-    _show_main()
+    _build()
+    resized.connect(_layout)
+    _layout()
+    set_process(true)
 
-func _build_ui() -> void:
-    background = TextureRect.new()
-    background.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
-    background.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
-    background.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_COVERED
-    background.texture = BG
-    add_child(background)
-    background.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+func _build() -> void:
+    var bg := TextureRect.new()
+    bg.name = "MenuArtwork"
+    bg.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+    bg.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+    bg.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_COVERED
+    bg.mouse_filter = Control.MOUSE_FILTER_IGNORE
+    if ResourceLoader.exists(ART_PATH):
+        bg.texture = load(ART_PATH)
+    else:
+        bg.texture = FALLBACK
+    add_child(bg)
+    bg.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+    background = bg
 
-    shade = ColorRect.new()
-    shade.color = Color(0.035, 0.028, 0.044, 0.44)
-    shade.mouse_filter = Control.MOUSE_FILTER_IGNORE
-    add_child(shade)
-    shade.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+    atmosphere = Node2D.new()
+    atmosphere.name = "AnimatedAtmosphere"
+    atmosphere.set_script(load("res://scripts/ui/menu_atmosphere.gd"))
+    atmosphere.z_index = 1
+    add_child(atmosphere)
 
-    var left := VBoxContainer.new()
-    left.position = Vector2(78, 80)
-    left.custom_minimum_size = Vector2(490, 0)
-    left.add_theme_constant_override("separation", 14)
-    add_child(left)
+    ui_layer = Control.new()
+    ui_layer.name = "ClickableMenu"
+    ui_layer.mouse_filter = Control.MOUSE_FILTER_PASS
+    add_child(ui_layer)
 
-    title_label = Label.new()
-    title_label.text = "МЕСТЬ\nДЕРЕВЕНЩИНЫ"
-    title_label.add_theme_font_size_override("font_size", 48)
-    title_label.add_theme_color_override("font_color", Color("#e5d5c4"))
-    title_label.add_theme_color_override("font_shadow_color", Color("#210e14"))
-    title_label.add_theme_constant_override("shadow_offset_x", 3)
-    title_label.add_theme_constant_override("shadow_offset_y", 4)
-    left.add_child(title_label)
+    # The labels and ornaments are painted into the reference image.
+    # Transparent buttons sit exactly over those labels; hover shows a subtle glow.
+    var entries := [
+        ["Продолжить", Rect2(77, 304, 334, 47), _not_ready],
+        ["Новая игра", Rect2(78, 359, 302, 43), _start_game],
+        ["Загрузить", Rect2(78, 412, 302, 43), _not_ready],
+        ["Настройки", Rect2(78, 465, 302, 43), _show_settings],
+        ["Дополнительно", Rect2(78, 519, 302, 43), _show_info],
+        ["Выход", Rect2(78, 573, 302, 43), _quit],
+    ]
+    for entry in entries:
+        var button := Button.new()
+        button.name = str(entry[0]).replace(" ", "_")
+        button.tooltip_text = str(entry[0])
+        button.text = ""
+        button.focus_mode = Control.FOCUS_NONE
+        button.position = entry[1].position
+        button.size = entry[1].size
+        button.mouse_default_cursor_shape = Control.CURSOR_POINTING_HAND
+        var transparent := StyleBoxEmpty.new()
+        button.add_theme_stylebox_override("normal", transparent)
+        var hover := StyleBoxFlat.new()
+        hover.bg_color = Color(0.65, 0.11, 0.16, 0.17)
+        hover.border_color = Color(1.0, 0.45, 0.37, 0.7)
+        hover.set_border_width_all(1)
+        button.add_theme_stylebox_override("hover", hover)
+        button.add_theme_stylebox_override("pressed", hover)
+        button.pressed.connect(entry[2])
+        ui_layer.add_child(button)
+        var index := menu_buttons.size()
+        menu_buttons.append(button)
+        button.mouse_entered.connect(_on_hover.bind(index))
+        button.mouse_exited.connect(_on_unhover.bind(index))
 
-    var gap := Control.new()
-    gap.custom_minimum_size.y = 36
-    left.add_child(gap)
-
-    main_panel = VBoxContainer.new()
-    main_panel.add_theme_constant_override("separation", 11)
-    left.add_child(main_panel)
-    _add_button(main_panel, "Новая игра", _start_game)
-    _add_button(main_panel, "Продолжить (скоро)", _unavailable, true)
-    _add_button(main_panel, "Настройки", _show_settings)
-    _add_button(main_panel, "Дополнительно", _show_info)
-    _add_button(main_panel, "Выход", _quit)
-
-    settings_panel = VBoxContainer.new()
-    settings_panel.add_theme_constant_override("separation", 14)
-    left.add_child(settings_panel)
-    var settings_title := Label.new()
-    settings_title.text = "НАСТРОЙКИ"
-    settings_title.add_theme_font_size_override("font_size", 28)
-    settings_panel.add_child(settings_title)
+    settings_panel = _panel("НАСТРОЙКИ")
     var fullscreen := CheckButton.new()
     fullscreen.text = "Полный экран"
     fullscreen.button_pressed = DisplayServer.window_get_mode() == DisplayServer.WINDOW_MODE_FULLSCREEN
     fullscreen.toggled.connect(_toggle_fullscreen)
-    settings_panel.add_child(fullscreen)
-    _add_button(settings_panel, "Назад", _show_main)
+    settings_panel.get_node("Margin/VBox").add_child(fullscreen)
+    _back_button(settings_panel)
 
-    info_panel = VBoxContainer.new()
-    left.add_child(info_panel)
-    var info := Label.new()
-    info.text = "Ранняя версия. Сохранения и загрузка\nбудут добавлены позднее."
-    info.add_theme_font_size_override("font_size", 19)
-    info_panel.add_child(info)
-    _add_button(info_panel, "Назад", _show_main)
+    message_panel = _panel("ИНФОРМАЦИЯ")
+    var description := Label.new()
+    description.text = "Пошел нахуй"
+    description.add_theme_font_size_override("font_size", 17)
+    message_panel.get_node("Margin/VBox").add_child(description)
+    _back_button(message_panel)
 
-    status_label = Label.new()
-    status_label.text = "ПРОТОТИП • 0.1"
-    status_label.add_theme_font_size_override("font_size", 16)
-    status_label.add_theme_color_override("font_color", Color("#baa9a3"))
-    status_label.position = Vector2(82, 650)
-    add_child(status_label)
+func _panel(heading: String) -> PanelContainer:
+    var panel := PanelContainer.new()
+    panel.visible = false
+    var style := StyleBoxFlat.new()
+    style.bg_color = Color(0.045, 0.035, 0.055, 0.96)
+    style.border_color = Color("#a65b58")
+    style.set_border_width_all(2)
+    panel.add_theme_stylebox_override("panel", style)
+    add_child(panel)
+    var margin := MarginContainer.new()
+    margin.name = "Margin"
+    margin.add_theme_constant_override("margin_left", 24)
+    margin.add_theme_constant_override("margin_right", 24)
+    margin.add_theme_constant_override("margin_top", 22)
+    margin.add_theme_constant_override("margin_bottom", 22)
+    panel.add_child(margin)
+    var vbox := VBoxContainer.new()
+    vbox.name = "VBox"
+    vbox.add_theme_constant_override("separation", 16)
+    margin.add_child(vbox)
+    var label := Label.new()
+    label.text = heading
+    label.add_theme_font_size_override("font_size", 29)
+    label.add_theme_color_override("font_color", Color("#f0d4c9"))
+    vbox.add_child(label)
+    return panel
 
-func _add_button(parent: VBoxContainer, caption: String, callback: Callable, disabled := false) -> void:
-    var button := Button.new()
-    button.text = caption
-    button.custom_minimum_size = Vector2(370, 51)
-    button.size_flags_horizontal = Control.SIZE_SHRINK_BEGIN
-    button.add_theme_font_size_override("font_size", 23)
-    button.add_theme_color_override("font_color", Color("#e9dcd1"))
-    button.add_theme_color_override("font_hover_color", Color("#f5c7b6"))
-    button.disabled = disabled
-    var normal := StyleBoxFlat.new()
-    normal.bg_color = Color("#170e14cc")
-    normal.border_color = Color("#8e6259")
-    normal.set_border_width_all(1)
-    normal.set_content_margin_all(8)
-    button.add_theme_stylebox_override("normal", normal)
-    var hover := normal.duplicate()
-    hover.bg_color = Color("#49202bcc")
-    hover.border_color = Color("#c69283")
-    button.add_theme_stylebox_override("hover", hover)
-    var pressed := hover.duplicate()
-    pressed.bg_color = Color("#6c2933")
-    button.add_theme_stylebox_override("pressed", pressed)
-    button.pressed.connect(callback)
-    parent.add_child(button)
+func _back_button(panel: PanelContainer) -> void:
+    var back := Button.new()
+    back.text = "Назад"
+    back.pressed.connect(_show_main)
+    panel.get_node("Margin/VBox").add_child(back)
+
+func _layout() -> void:
+    if ui_layer == null:
+        return
+    var scale_factor := minf(size.x / 1280.0, size.y / 720.0)
+    ui_layer.scale = Vector2.ONE * scale_factor
+    ui_layer.position = (size - Vector2(1280, 720) * scale_factor) / 2.0
+    atmosphere.position = ui_layer.position
+    atmosphere.scale = Vector2.ONE * scale_factor
+    for panel in [settings_panel, message_panel]:
+        panel.position = (size - Vector2(470, 230) * scale_factor) / 2.0
+        panel.size = Vector2(470, 230) * scale_factor
 
 func _show_main() -> void:
-    main_panel.show()
     settings_panel.hide()
-    info_panel.hide()
+    message_panel.hide()
+    ui_layer.show()
 
 func _show_settings() -> void:
-    main_panel.hide()
+    ui_layer.hide()
+    message_panel.hide()
     settings_panel.show()
-    info_panel.hide()
 
 func _show_info() -> void:
-    main_panel.hide()
+    ui_layer.hide()
     settings_panel.hide()
-    info_panel.show()
+    message_panel.show()
+
+func _not_ready() -> void:
+    _show_info()
 
 func _start_game() -> void:
     get_tree().change_scene_to_file(GAME_SCENE)
-
-func _unavailable() -> void:
-    pass
 
 func _toggle_fullscreen(enabled: bool) -> void:
     DisplayServer.window_set_mode(DisplayServer.WINDOW_MODE_FULLSCREEN if enabled else DisplayServer.WINDOW_MODE_WINDOWED)
@@ -143,3 +171,33 @@ func _quit() -> void:
 func _unhandled_key_input(event: InputEvent) -> void:
     if event.is_action_pressed("ui_cancel"):
         _show_main()
+
+func _process(delta: float) -> void:
+    menu_time += delta
+    # Gentle cinematic breathing: no hard movement or visible seams.
+    if background != null:
+        var zoom := 1.012 + sin(menu_time * 0.24) * 0.006
+        background.pivot_offset = size * 0.5
+        background.scale = Vector2.ONE * zoom
+    if atmosphere != null:
+        atmosphere.set("elapsed", menu_time)
+        atmosphere.queue_redraw()
+    for i in range(menu_buttons.size()):
+        var target := 1.0 if i == hovered_index else 0.0
+        hover_progress[i] = move_toward(hover_progress[i], target, delta * 5.0)
+        var b := menu_buttons[i]
+        # An animated crimson halo; labels remain part of the original art.
+        b.modulate = Color(1.0, 0.91 + 0.09 * hover_progress[i], 0.91 + 0.09 * hover_progress[i])
+        b.position.x = [77.0, 78.0, 78.0, 78.0, 78.0, 78.0][i] + hover_progress[i] * 4.0
+        b.position.y = [304.0, 359.0, 412.0, 465.0, 519.0, 573.0][i]
+        var box := b.get_theme_stylebox("hover")
+        if box is StyleBoxFlat:
+            box.bg_color = Color(0.73, 0.08, 0.12, 0.11 + 0.17 * hover_progress[i])
+            box.border_color = Color(1.0, 0.43, 0.33, 0.45 + 0.45 * hover_progress[i])
+
+func _on_hover(index: int) -> void:
+    hovered_index = index
+
+func _on_unhover(index: int) -> void:
+    if hovered_index == index:
+        hovered_index = -1

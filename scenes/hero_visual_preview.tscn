@@ -1,20 +1,46 @@
-[gd_scene load_steps=4 format=3]
+[gd_scene format=3 uid="uid://c5pwo8hm5ju8k"]
 
-[ext_resource type="Script" path="res://scripts/actors/hero_visual_preview.gd" id="1"]
-[ext_resource type="Texture2D" path="res://assets/characters/hero_teen_side.svg" id="2"]
+[ext_resource type="Script" uid="uid://cp8jlmvajej2u" path="res://scripts/actors/hero_controller.gd" id="1"]
+[ext_resource type="Texture2D" uid="uid://dki4qlye55ugb" path="res://assets/characters/hero/hero_idle.png" id="2"]
 
-[sub_resource type="RectangleShape2D" id="RectangleShape2D_ground"]
-size = Vector2(1200, 30)
+[sub_resource type="RectangleShape2D" id="RectangleShape2D_floor"]
+size = Vector2(1280, 36)
 
-[node name="HeroVisualPreview" type="Node2D"]
+[sub_resource type="CapsuleShape2D" id="CapsuleShape2D_hero"]
+radius = 21.0
+height = 88.0
+
+[node name="HeroVisualPreview" type="Node2D" unique_id=2025229440]
+
+[node name="Backdrop" type="ColorRect" parent="." unique_id=657208208]
+offset_right = 1280.0
+offset_bottom = 720.0
+color = Color(0.09, 0.095, 0.13, 1)
+
+[node name="FloorVisual" type="ColorRect" parent="." unique_id=1099175785]
+offset_top = 610.0
+offset_right = 1280.0
+offset_bottom = 720.0
+color = Color(0.2, 0.19, 0.18, 1)
+
+[node name="Floor" type="StaticBody2D" parent="." unique_id=179933866]
+position = Vector2(640, 628)
+
+[node name="CollisionShape2D" type="CollisionShape2D" parent="Floor" unique_id=118050818]
+shape = SubResource("RectangleShape2D_floor")
+
+[node name="Hero" type="CharacterBody2D" parent="." unique_id=1976686641]
+position = Vector2(480, 565)
 script = ExtResource("1")
 
-[node name="Ground" type="StaticBody2D" parent="."]
-position = Vector2(640, 590)
-
-[node name="CollisionShape2D" type="CollisionShape2D" parent="Ground"]
-shape = SubResource("RectangleShape2D_ground")
-
-[node name="Hero" type="Sprite2D" parent="."]
-position = Vector2(480, 463)
+[node name="Sprite2D" type="Sprite2D" parent="Hero" unique_id=1007354855]
+position = Vector2(0, -33)
+scale = Vector2(0.25, 0.25)
 texture = ExtResource("2")
+
+[node name="CollisionShape2D" type="CollisionShape2D" parent="Hero" unique_id=854131010]
+position = Vector2(5, -38)
+shape = SubResource("CapsuleShape2D_hero")
+
+[node name="Camera2D" type="Camera2D" parent="Hero" unique_id=247873788]
+position = Vector2(15, -30)
