@@ -30,7 +30,7 @@ position = Vector2(640, 628)
 shape = SubResource("RectangleShape2D_floor")
 
 [node name="Hero" type="CharacterBody2D" parent="." unique_id=1976686641]
-position = Vector2(480, 565)
+position = Vector2(480, 555)
 script = ExtResource("1")
 
 [node name="Sprite2D" type="Sprite2D" parent="Hero" unique_id=1007354855]
@@ -39,7 +39,7 @@ scale = Vector2(0.25, 0.25)
 texture = ExtResource("2")
 
 [node name="CollisionShape2D" type="CollisionShape2D" parent="Hero" unique_id=854131010]
-position = Vector2(5, -38)
+position = Vector2(0, 0)
 shape = SubResource("CapsuleShape2D_hero")
 
 [node name="Camera2D" type="Camera2D" parent="Hero" unique_id=247873788]
