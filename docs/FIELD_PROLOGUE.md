@@ -1,9 +1,20 @@
-# First playable level: field prologue
+# Первая игровая локация: поле возле деревни
 
-Launch the project (F5) and choose **Новая игра**, or open `scenes/field_prologue.tscn` and press F6.
+Запуск: F5 → «Новая игра» или открыть `scenes/field_prologue.tscn` и нажать F6.
 
-Controls: A/D or arrow keys — move; Space — jump; Esc — return to main menu.
+Управление: A/D или стрелки — движение; Space — прыжок; Esc — возвращение в меню.
 
-The level contains a procedural, non-pixel-art placeholder countryside with wheat, windmill, fences, a dirt road, distant hills and village houses. The wheat sways and the mill rotates. The ground is collidable and the player camera follows the hero.
+## Камера
 
-This is an early playable blockout, not final hand-painted scenery. The protagonist still uses a single idle illustration, and there are no field-work interactions, NPCs, or cutscenes yet. Test the scene in Godot before relying on it as production-ready.
+Камера теперь следует за героем при горизонтальном движении. Она плавно догоняет его и смотрит немного вперёд по направлению движения, не выходя за края уровня.
+
+- Скрипт: `scripts/camera/hero_follow_camera.gd`.
+- Узел: `FieldPrologue/Hero/Camera2D`.
+- Плавность: `position_smoothing_speed = 4.5`.
+- Предпросмотр движения: `look_ahead_distance = 130`.
+- Границы уровня: X от 0 до 2000, Y от 0 до 720.
+- По краям стоят невидимые физические стены, чтобы персонаж не ушёл за фон.
+
+Иллюстрация используется как единая задняя декорация, расширенная до 2000 пикселей. Это не настоящее многослойное параллакс-окружение; для него понадобятся отдельные художественные слои, позволяющие двигать дальние и ближние планы с разной скоростью.
+
+Проверить запуск на локальном Godot после `git pull`: сцена должна открываться, герой двигаться, а камера начинать прокручиваться после продвижения вправо. Без запуска движка на стороне разработчика это пока не подтверждённый runtime-тест.
