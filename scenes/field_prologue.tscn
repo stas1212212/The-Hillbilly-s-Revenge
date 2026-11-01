@@ -1,4 +1,4 @@
-[gd_scene load_steps=8 format=3]
+[gd_scene load_steps=11 format=3]
 
 [ext_resource type="Texture2D" path="res://assets/backgrounds/field_prologue_bg.png" id="1"]
 [ext_resource type="Script" path="res://scripts/actors/hero_controller.gd" id="2"]
@@ -14,6 +14,28 @@ height = 94.0
 
 [sub_resource type="RectangleShape2D" id="wall_shape"]
 size = Vector2(32, 820)
+
+
+[sub_resource type="SpriteFrames" id="hero_frames"]
+animations = [
+{"frames": [{"duration": 1.0, "texture": ExtResource("3")}], "loop": true, "name": &"idle", "speed": 12.0},
+{"frames": [{"duration": 1.0, "texture": ExtResource("3")}], "loop": true, "name": &"walk", "speed": 12.0},
+{"frames": [{"duration": 1.0, "texture": ExtResource("3")}], "loop": true, "name": &"run", "speed": 16.0},
+{"frames": [{"duration": 1.0, "texture": ExtResource("3")}], "loop": false, "name": &"jump", "speed": 12.0},
+{"frames": [{"duration": 1.0, "texture": ExtResource("3")}], "loop": false, "name": &"fall", "speed": 12.0},
+{"frames": [{"duration": 1.0, "texture": ExtResource("3")}], "loop": false, "name": &"attack_1", "speed": 12.0},
+{"frames": [{"duration": 1.0, "texture": ExtResource("3")}], "loop": false, "name": &"attack_2", "speed": 12.0},
+{"frames": [{"duration": 1.0, "texture": ExtResource("3")}], "loop": false, "name": &"attack_3", "speed": 12.0},
+{"frames": [{"duration": 1.0, "texture": ExtResource("3")}], "loop": false, "name": &"hurt", "speed": 12.0},
+{"frames": [{"duration": 1.0, "texture": ExtResource("3")}], "loop": false, "name": &"death", "speed": 12.0}
+]
+
+[sub_resource type="RectangleShape2D" id="attack_shape"]
+size = Vector2(75, 72)
+
+[sub_resource type="CapsuleShape2D" id="hurt_shape"]
+radius = 19.0
+height = 90.0
 
 [node name="FieldPrologue" type="Node2D"]
 
@@ -44,10 +66,28 @@ shape = SubResource("wall_shape")
 position = Vector2(430, 555)
 script = ExtResource("2")
 
-[node name="Sprite2D" type="Sprite2D" parent="Hero"]
+[node name="AnimatedSprite2D" type="AnimatedSprite2D" parent="Hero"]
 position = Vector2(0, -38)
 scale = Vector2(0.25, 0.25)
-texture = ExtResource("3")
+sprite_frames = SubResource("hero_frames")
+autoplay = "idle"
+
+[node name="Hurtbox" type="Area2D" parent="Hero"]
+collision_layer = 0
+collision_mask = 0
+
+[node name="CollisionShape2D" type="CollisionShape2D" parent="Hero/Hurtbox"]
+shape = SubResource("hurt_shape")
+
+[node name="AttackBox" type="Area2D" parent="Hero"]
+position = Vector2(45, 0)
+collision_layer = 0
+collision_mask = 2
+monitoring = false
+
+[node name="CollisionShape2D" type="CollisionShape2D" parent="Hero/AttackBox"]
+shape = SubResource("attack_shape")
+disabled = true
 
 [node name="CollisionShape2D" type="CollisionShape2D" parent="Hero"]
 shape = SubResource("hero_shape")
