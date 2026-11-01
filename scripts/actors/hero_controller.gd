@@ -169,7 +169,7 @@ func _load_optional_sprite_strips() -> void:
             frames.add_animation(name)
         for i in range(frames.get_frame_count(name) - 1, -1, -1):
             frames.remove_frame(name, i)
-        var count: int = texture.get_width() / 256
+        var count: int = int(texture.get_width() / 256)
         for i in range(count):
             var atlas := AtlasTexture.new()
             atlas.atlas = texture
