@@ -1,98 +1,167 @@
-[gd_scene load_steps=11 format=3]
+[gd_scene format=3 uid="uid://dkfqelix0epnl"]
 
-[ext_resource type="Texture2D" path="res://assets/backgrounds/field_prologue_bg.png" id="1"]
-[ext_resource type="Script" path="res://scripts/actors/hero_controller.gd" id="2"]
-[ext_resource type="Texture2D" path="res://assets/characters/hero/hero_idle.png" id="3"]
-[ext_resource type="Script" path="res://scripts/camera/hero_follow_camera.gd" id="4"]
+[ext_resource type="Texture2D" uid="uid://dmyw772o1qt3l" path="res://assets/backgrounds/field_prologue_bg.png" id="1"]
+[ext_resource type="Script" uid="uid://cp8jlmvajej2u" path="res://scripts/actors/hero_controller.gd" id="2"]
+[ext_resource type="Texture2D" uid="uid://dki4qlye55ugb" path="res://assets/characters/hero/hero_idle.png" id="3"]
+[ext_resource type="Script" uid="uid://d1aom3vn665kh" path="res://scripts/camera/hero_follow_camera.gd" id="4"]
 
 [sub_resource type="RectangleShape2D" id="ground_shape"]
 size = Vector2(2000, 96)
 
-[sub_resource type="CapsuleShape2D" id="hero_shape"]
-radius = 20.0
-height = 94.0
-
 [sub_resource type="RectangleShape2D" id="wall_shape"]
 size = Vector2(32, 820)
 
-
 [sub_resource type="SpriteFrames" id="hero_frames"]
-animations = [
-{"frames": [{"duration": 1.0, "texture": ExtResource("3")}], "loop": true, "name": &"idle", "speed": 12.0},
-{"frames": [{"duration": 1.0, "texture": ExtResource("3")}], "loop": true, "name": &"walk", "speed": 12.0},
-{"frames": [{"duration": 1.0, "texture": ExtResource("3")}], "loop": true, "name": &"run", "speed": 16.0},
-{"frames": [{"duration": 1.0, "texture": ExtResource("3")}], "loop": false, "name": &"jump", "speed": 12.0},
-{"frames": [{"duration": 1.0, "texture": ExtResource("3")}], "loop": false, "name": &"fall", "speed": 12.0},
-{"frames": [{"duration": 1.0, "texture": ExtResource("3")}], "loop": false, "name": &"attack_1", "speed": 12.0},
-{"frames": [{"duration": 1.0, "texture": ExtResource("3")}], "loop": false, "name": &"attack_2", "speed": 12.0},
-{"frames": [{"duration": 1.0, "texture": ExtResource("3")}], "loop": false, "name": &"attack_3", "speed": 12.0},
-{"frames": [{"duration": 1.0, "texture": ExtResource("3")}], "loop": false, "name": &"hurt", "speed": 12.0},
-{"frames": [{"duration": 1.0, "texture": ExtResource("3")}], "loop": false, "name": &"death", "speed": 12.0}
-]
-
-[sub_resource type="RectangleShape2D" id="attack_shape"]
-size = Vector2(75, 72)
+animations = [{
+"frames": [{
+"duration": 1.0,
+"texture": ExtResource("3")
+}],
+"loop": 0,
+"name": &"attack_1",
+"speed": 12.0
+}, {
+"frames": [{
+"duration": 1.0,
+"texture": ExtResource("3")
+}],
+"loop": 0,
+"name": &"attack_2",
+"speed": 12.0
+}, {
+"frames": [{
+"duration": 1.0,
+"texture": ExtResource("3")
+}],
+"loop": 0,
+"name": &"attack_3",
+"speed": 12.0
+}, {
+"frames": [{
+"duration": 1.0,
+"texture": ExtResource("3")
+}],
+"loop": 0,
+"name": &"death",
+"speed": 12.0
+}, {
+"frames": [{
+"duration": 1.0,
+"texture": ExtResource("3")
+}],
+"loop": 0,
+"name": &"fall",
+"speed": 12.0
+}, {
+"frames": [{
+"duration": 1.0,
+"texture": ExtResource("3")
+}],
+"loop": 0,
+"name": &"hurt",
+"speed": 12.0
+}, {
+"frames": [{
+"duration": 1.0,
+"texture": ExtResource("3")
+}],
+"loop": 1,
+"name": &"idle",
+"speed": 12.0
+}, {
+"frames": [{
+"duration": 1.0,
+"texture": ExtResource("3")
+}],
+"loop": 0,
+"name": &"jump",
+"speed": 12.0
+}, {
+"frames": [{
+"duration": 1.0,
+"texture": ExtResource("3")
+}],
+"loop": 1,
+"name": &"run",
+"speed": 16.0
+}, {
+"frames": [{
+"duration": 1.0,
+"texture": ExtResource("3")
+}],
+"loop": 1,
+"name": &"walk",
+"speed": 12.0
+}]
 
 [sub_resource type="CapsuleShape2D" id="hurt_shape"]
 radius = 19.0
 height = 90.0
 
-[node name="FieldPrologue" type="Node2D"]
+[sub_resource type="RectangleShape2D" id="attack_shape"]
+size = Vector2(75, 72)
 
-[node name="Background" type="Sprite2D" parent="."]
+[sub_resource type="CapsuleShape2D" id="hero_shape"]
+radius = 20.0
+height = 94.0
+
+[node name="FieldPrologue" type="Node2D" unique_id=1695873985]
+
+[node name="Background" type="Sprite2D" parent="." unique_id=380382075]
 position = Vector2(1000, 325)
 scale = Vector2(1.1961722, 1.1961722)
 texture = ExtResource("1")
 
-[node name="Ground" type="StaticBody2D" parent="."]
+[node name="Ground" type="StaticBody2D" parent="." unique_id=178573402]
 position = Vector2(1000, 651)
 
-[node name="CollisionShape2D" type="CollisionShape2D" parent="Ground"]
+[node name="CollisionShape2D" type="CollisionShape2D" parent="Ground" unique_id=1523241076]
 shape = SubResource("ground_shape")
 
-[node name="LeftBorder" type="StaticBody2D" parent="."]
+[node name="LeftBorder" type="StaticBody2D" parent="." unique_id=1644963364]
 position = Vector2(-16, 360)
 
-[node name="CollisionShape2D" type="CollisionShape2D" parent="LeftBorder"]
+[node name="CollisionShape2D" type="CollisionShape2D" parent="LeftBorder" unique_id=1788853042]
 shape = SubResource("wall_shape")
 
-[node name="RightBorder" type="StaticBody2D" parent="."]
+[node name="RightBorder" type="StaticBody2D" parent="." unique_id=1660118568]
 position = Vector2(2016, 360)
 
-[node name="CollisionShape2D" type="CollisionShape2D" parent="RightBorder"]
+[node name="CollisionShape2D" type="CollisionShape2D" parent="RightBorder" unique_id=1742992431]
 shape = SubResource("wall_shape")
 
-[node name="Hero" type="CharacterBody2D" parent="."]
+[node name="Hero" type="CharacterBody2D" parent="." unique_id=1498224280]
 position = Vector2(430, 555)
 script = ExtResource("2")
 
-[node name="AnimatedSprite2D" type="AnimatedSprite2D" parent="Hero"]
+[node name="AnimatedSprite2D" type="AnimatedSprite2D" parent="Hero" unique_id=367437993]
 position = Vector2(0, -38)
-scale = Vector2(0.25, 0.25)
+scale = Vector2(0.50, 0.50)
 sprite_frames = SubResource("hero_frames")
+animation = &"idle"
 autoplay = "idle"
 
-[node name="Hurtbox" type="Area2D" parent="Hero"]
+[node name="Hurtbox" type="Area2D" parent="Hero" unique_id=330558713]
 collision_layer = 0
 collision_mask = 0
 
-[node name="CollisionShape2D" type="CollisionShape2D" parent="Hero/Hurtbox"]
+[node name="CollisionShape2D" type="CollisionShape2D" parent="Hero/Hurtbox" unique_id=1048077909]
 shape = SubResource("hurt_shape")
 
-[node name="AttackBox" type="Area2D" parent="Hero"]
+[node name="AttackBox" type="Area2D" parent="Hero" unique_id=1019423476]
 position = Vector2(45, 0)
 collision_layer = 0
 collision_mask = 2
 monitoring = false
 
-[node name="CollisionShape2D" type="CollisionShape2D" parent="Hero/AttackBox"]
+[node name="CollisionShape2D" type="CollisionShape2D" parent="Hero/AttackBox" unique_id=369788477]
 shape = SubResource("attack_shape")
 disabled = true
 
-[node name="CollisionShape2D" type="CollisionShape2D" parent="Hero"]
+[node name="CollisionShape2D" type="CollisionShape2D" parent="Hero" unique_id=2017864059]
 shape = SubResource("hero_shape")
 
-[node name="Camera2D" type="Camera2D" parent="Hero"]
+[node name="Camera2D" type="Camera2D" parent="Hero" unique_id=762059592]
 position = Vector2(0, -110)
 limit_left = 0
 limit_top = 0
@@ -103,9 +172,9 @@ position_smoothing_enabled = true
 position_smoothing_speed = 4.5
 script = ExtResource("4")
 
-[node name="CanvasLayer" type="CanvasLayer" parent="."]
+[node name="CanvasLayer" type="CanvasLayer" parent="." unique_id=693823565]
 
-[node name="LocationLabel" type="Label" parent="CanvasLayer"]
+[node name="LocationLabel" type="Label" parent="CanvasLayer" unique_id=441797305]
 offset_left = 26.0
 offset_top = 22.0
 offset_right = 620.0
@@ -113,7 +182,7 @@ offset_bottom = 60.0
 theme_override_font_sizes/font_size = 20
 text = "ПОЛЕ У ДЕРЕВНИ"
 
-[node name="HintLabel" type="Label" parent="CanvasLayer"]
+[node name="HintLabel" type="Label" parent="CanvasLayer" unique_id=677734528]
 offset_left = 26.0
 offset_top = 48.0
 offset_right = 820.0
