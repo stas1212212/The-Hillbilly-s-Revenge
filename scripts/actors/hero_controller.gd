@@ -35,6 +35,7 @@ func _ready() -> void:
 	visual_origin = art.position
 	baseline_art_scale = art.scale
 	_load_refined_idle_frames()
+	_load_idle_60_frames()
 	attack_box.monitoring = false
 	attack_shape.disabled = true
 	hurt_box.add_to_group("hero_hurtbox")
@@ -229,6 +230,47 @@ func _load_refined_idle_frames() -> void:
 	art.sprite_frames = frames
 	refined_idle_loaded = true
 	art.play("idle")
+
+
+## Prefer the refined 60-frame standing atlas when installed. The file is
+## optional so existing projects still run if the PNG hasn't been copied yet.
+## Layout: 10 columns, 6 rows; each frame is 256x384 pixels.
+func _load_idle_60_frames() -> void:
+	const IDLE_60_PATH: String = "res://assets/characters/hero/idle/elian_idle_60.png"
+	if not ResourceLoader.exists(IDLE_60_PATH):
+		return
+
+	var texture: Texture2D = load(IDLE_60_PATH) as Texture2D
+	if texture == null:
+		return
+	if texture.get_width() != 2560 or texture.get_height() != 2304:
+		push_warning("Elian idle 60 atlas must be 2560x2304 (10x6 frames, 256x384 each).")
+		return
+
+	var frames: SpriteFrames = art.sprite_frames.duplicate(true) as SpriteFrames
+	if frames == null:
+		return
+	if not frames.has_animation("idle"):
+		frames.add_animation("idle")
+	for frame_index in range(frames.get_frame_count("idle") - 1, -1, -1):
+		frames.remove_frame("idle", frame_index)
+	for frame_index in range(60):
+		var atlas_frame := AtlasTexture.new()
+		atlas_frame.atlas = texture
+		atlas_frame.region = Rect2(
+			(frame_index % 10) * 256,
+			int(frame_index / 10) * 384,
+			256, 384
+		)
+		frames.add_frame("idle", atlas_frame)
+
+	frames.set_animation_speed("idle", 30.0)
+	frames.set_animation_loop("idle", true)
+	art.sprite_frames = frames
+	art.texture_filter = CanvasItem.TEXTURE_FILTER_LINEAR
+	refined_idle_loaded = true
+	art.play("idle")
+	art.set_frame_and_progress(0, 0.0)
 
 
 func _unhandled_input(event: InputEvent) -> void:
