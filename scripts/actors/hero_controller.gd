@@ -36,6 +36,7 @@ func _ready() -> void:
 	baseline_art_scale = art.scale
 	_load_refined_idle_frames()
 	_load_idle_60_frames()
+	_load_idle_25_frames()
 	attack_box.monitoring = false
 	attack_shape.disabled = true
 	hurt_box.add_to_group("hero_hurtbox")
@@ -265,6 +266,44 @@ func _load_idle_60_frames() -> void:
 		frames.add_frame("idle", atlas_frame)
 
 	frames.set_animation_speed("idle", 30.0)
+	frames.set_animation_loop("idle", true)
+	art.sprite_frames = frames
+	art.texture_filter = CanvasItem.TEXTURE_FILTER_LINEAR
+	refined_idle_loaded = true
+	art.play("idle")
+	art.set_frame_and_progress(0, 0.0)
+
+
+## Preferred latest idle: 25 cleaned, foot-aligned frames (5x5 x 256x384).
+## This runs AFTER the old 60-frame loader, so users can keep that asset
+## installed without accidentally playing it instead of the newer idle.
+## No image -> graceful fallback to older idle assets.
+func _load_idle_25_frames() -> void:
+	const IDLE_25_PATH: String = "res://assets/characters/hero/idle/elian_idle_25.png"
+	if not ResourceLoader.exists(IDLE_25_PATH):
+		return
+
+	var texture: Texture2D = load(IDLE_25_PATH) as Texture2D
+	if texture == null:
+		return
+	if texture.get_width() != 1280 or texture.get_height() != 1920:
+		push_warning("Elian idle 25 atlas must be 1280x1920 (5x5 frames of 256x384).")
+		return
+
+	var frames: SpriteFrames = art.sprite_frames.duplicate(true) as SpriteFrames
+	if frames == null:
+		return
+	if not frames.has_animation("idle"):
+		frames.add_animation("idle")
+	for i in range(frames.get_frame_count("idle") - 1, -1, -1):
+		frames.remove_frame("idle", i)
+	for i in range(25):
+		var tile := AtlasTexture.new()
+		tile.atlas = texture
+		tile.region = Rect2((i % 5) * 256, int(i / 5) * 384, 256, 384)
+		frames.add_frame("idle", tile)
+
+	frames.set_animation_speed("idle", 12.5)
 	frames.set_animation_loop("idle", true)
 	art.sprite_frames = frames
 	art.texture_filter = CanvasItem.TEXTURE_FILTER_LINEAR
