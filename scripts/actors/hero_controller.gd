@@ -25,12 +25,16 @@ var facing: int = 1
 var dead: bool = false
 var animation_clock: float = 0.0
 var visual_origin: Vector2
+var baseline_art_scale: Vector2 = Vector2.ONE
+var refined_idle_loaded: bool = false
 var already_hit: Array[Node] = []
 
 func _ready() -> void:
     health = max_health
     _load_optional_sprite_strips()
     visual_origin = art.position
+    baseline_art_scale = art.scale
+    _load_refined_idle_frames()
     attack_box.monitoring = false
     attack_shape.disabled = true
     hurt_box.add_to_group("hero_hurtbox")
@@ -104,8 +108,17 @@ func _update_animation(axis: float, sprinting: bool) -> void:
     else:
         _play_if_available("idle")
         art.rotation = 0.0
-    # Small placeholder motion; real frame-by-frame art will replace this.
-    art.position.y = visual_origin.y + (sin(animation_clock * 12.0) * 2.0 if absf(axis) > 0.01 and is_on_floor() else 0.0)
+    # The new 12-frame standing animation has a taller 256x384 frame.
+    # Keep its feet on the same collision-floor line and restore old layout
+    # for other animations, whose legacy art uses a different frame size.
+    if refined_idle_loaded and art.animation == "idle":
+        art.scale = Vector2(0.52, 0.52)
+        art.position = Vector2(0.0, -42.0)
+    else:
+        art.scale = baseline_art_scale
+        art.position = visual_origin
+        if absf(axis) > 0.01 and is_on_floor():
+            art.position.y += sin(animation_clock * 12.0) * 2.0
 
 func _play_if_available(name: String) -> void:
     if art.sprite_frames != null and art.sprite_frames.has_animation(name) and art.animation != name:
@@ -181,6 +194,40 @@ func _load_optional_sprite_strips() -> void:
     art.scale = Vector2(0.6, 0.6)
     art.position.y = -14.0
     art.play("idle")
+
+## The clean 12-frame idle atlas is optional. Until its PNG is installed,
+## the existing project animations still work without missing-file errors.
+func _load_refined_idle_frames() -> void:
+    const IDLE_ATLAS_PATH: String = "res://assets/characters/hero/idle/elian_idle_12.png"
+    if not ResourceLoader.exists(IDLE_ATLAS_PATH):
+        return
+
+    var texture: Texture2D = load(IDLE_ATLAS_PATH) as Texture2D
+    if texture == null:
+        return
+    if texture.get_width() != 3072 or texture.get_height() != 384:
+        push_warning("Elian idle atlas must be 3072x384 (12 frames of 256x384).")
+        return
+
+    var frames: SpriteFrames = art.sprite_frames.duplicate(true) as SpriteFrames
+    if frames == null:
+        return
+    if not frames.has_animation("idle"):
+        frames.add_animation("idle")
+    for i in range(frames.get_frame_count("idle") - 1, -1, -1):
+        frames.remove_frame("idle", i)
+    for i in range(12):
+        var tile := AtlasTexture.new()
+        tile.atlas = texture
+        tile.region = Rect2(i * 256, 0, 256, 384)
+        frames.add_frame("idle", tile)
+
+    frames.set_animation_speed("idle", 8.0)
+    frames.set_animation_loop("idle", true)
+    art.sprite_frames = frames
+    refined_idle_loaded = true
+    art.play("idle")
+
 
 func _unhandled_input(event: InputEvent) -> void:
     if event.is_action_pressed("ui_cancel"):
