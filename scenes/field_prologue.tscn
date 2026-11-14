@@ -188,4 +188,4 @@ offset_top = 48.0
 offset_right = 820.0
 offset_bottom = 85.0
 theme_override_font_sizes/font_size = 16
-text = "A/D — идти   •   Space — прыгать   •   Esc — меню"
+text = "A/D — идти   •   Shift — бег   •   Space — прыжок   •   F — белая форма   •   Esc — меню"
