@@ -6,7 +6,7 @@ uniform vec4 shadow_blue : source_color = vec4(0.32, 0.42, 0.56, 1.0);
 uniform float shimmer : hint_range(0.0, 1.0) = 0.13;
 
 void fragment() {
-    vec4 base = texture(TEXTURE, UV) * COLOR;
+    vec4 base = COLOR; // In Godot 4 fragment(), COLOR already includes TEXTURE.
     float mask = smoothstep(0.0, 1.0, form_strength);
     float luminance = dot(base.rgb, vec3(0.2126, 0.7152, 0.0722));
 
