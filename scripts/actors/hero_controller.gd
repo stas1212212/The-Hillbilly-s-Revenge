@@ -28,7 +28,7 @@ var visual_origin: Vector2
 var baseline_art_scale: Vector2 = Vector2.ONE
 var refined_idle_loaded: bool = false
 var refined_walk_loaded: bool = false
-var demon_form_visual: Node2D
+var demon_form_visual: DemonFormVisual
 var already_hit: Array[Node] = []
 
 func _ready() -> void:
@@ -363,8 +363,7 @@ func set_demon_form(enabled: bool) -> void:
 
 
 func _setup_demon_form_visual() -> void:
-	var visual_script: Script = preload("res://scripts/visual/demon_form_visual.gd")
-	demon_form_visual = visual_script.new() as Node2D
+	demon_form_visual = DemonFormVisual.new()
 	demon_form_visual.name = "DemonFormVisual"
 	add_child(demon_form_visual)
 	demon_form_visual.setup(art)
