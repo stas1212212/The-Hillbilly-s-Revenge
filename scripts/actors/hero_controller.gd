@@ -27,6 +27,7 @@ var animation_clock: float = 0.0
 var visual_origin: Vector2
 var baseline_art_scale: Vector2 = Vector2.ONE
 var refined_idle_loaded: bool = false
+var refined_walk_loaded: bool = false
 var already_hit: Array[Node] = []
 
 func _ready() -> void:
@@ -37,6 +38,7 @@ func _ready() -> void:
 	_load_refined_idle_frames()
 	_load_idle_60_frames()
 	_load_idle_25_frames()
+	_load_walk_16_frames()
 	attack_box.monitoring = false
 	attack_shape.disabled = true
 	hurt_box.add_to_group("hero_hurtbox")
@@ -111,7 +113,11 @@ func _update_animation(axis: float, sprinting: bool) -> void:
 		_play_if_available("idle")
 		art.rotation = 0.0
 
-	if refined_idle_loaded and art.animation == "idle":
+	if refined_walk_loaded and art.animation == "walk":
+		# Same 256x384 canvas and visual anchor as refined idle.
+		art.scale = Vector2(1.04, 1.04)
+		art.position = Vector2(0.0, -130.0)
+	elif refined_idle_loaded and art.animation == "idle":
 		# Новая стойка Еліана
 		art.scale = Vector2(1.04, 1.04)
 		art.position = Vector2(0.0, -130.0)
@@ -310,6 +316,40 @@ func _load_idle_25_frames() -> void:
 	refined_idle_loaded = true
 	art.play("idle")
 	art.set_frame_and_progress(0, 0.0)
+
+
+## Optional 16-frame side-view walking cycle, 4x4 cells at 256x384.
+## No PNG installed -> keep existing five-frame walk animation.
+func _load_walk_16_frames() -> void:
+	const WALK_16_PATH: String = "res://assets/characters/hero/walk/elian_walk_16.png"
+	if not ResourceLoader.exists(WALK_16_PATH):
+		return
+
+	var texture: Texture2D = load(WALK_16_PATH) as Texture2D
+	if texture == null:
+		return
+	if texture.get_width() != 1024 or texture.get_height() != 1536:
+		push_warning("Elian walk atlas must be 1024x1536 (4x4 frames of 256x384).")
+		return
+
+	var frames: SpriteFrames = art.sprite_frames.duplicate(true) as SpriteFrames
+	if frames == null:
+		return
+	if not frames.has_animation("walk"):
+		frames.add_animation("walk")
+	for i in range(frames.get_frame_count("walk") - 1, -1, -1):
+		frames.remove_frame("walk", i)
+	for i in range(16):
+		var tile := AtlasTexture.new()
+		tile.atlas = texture
+		tile.region = Rect2((i % 4) * 256, int(i / 4) * 384, 256, 384)
+		frames.add_frame("walk", tile)
+
+	frames.set_animation_speed("walk", 20.0)
+	frames.set_animation_loop("walk", true)
+	art.sprite_frames = frames
+	art.texture_filter = CanvasItem.TEXTURE_FILTER_LINEAR
+	refined_walk_loaded = true
 
 
 func _unhandled_input(event: InputEvent) -> void:
