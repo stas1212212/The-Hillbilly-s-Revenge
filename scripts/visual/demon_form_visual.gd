@@ -1,3 +1,4 @@
+class_name DemonFormVisual
 extends Node2D
 ## Visual-only spectral transformation for AnimatedSprite2D.
 ## Does not modify physics, collisions, health or combat damage.
