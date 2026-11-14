@@ -28,6 +28,7 @@ var visual_origin: Vector2
 var baseline_art_scale: Vector2 = Vector2.ONE
 var refined_idle_loaded: bool = false
 var refined_walk_loaded: bool = false
+var demon_form_visual: Node2D
 var already_hit: Array[Node] = []
 
 func _ready() -> void:
@@ -39,6 +40,7 @@ func _ready() -> void:
 	_load_idle_60_frames()
 	_load_idle_25_frames()
 	_load_walk_16_frames()
+	_setup_demon_form_visual()
 	attack_box.monitoring = false
 	attack_shape.disabled = true
 	hurt_box.add_to_group("hero_hurtbox")
@@ -352,6 +354,27 @@ func _load_walk_16_frames() -> void:
 	refined_walk_loaded = true
 
 
+
+## Visual-only prototype. Calling this from story/ability code is also supported.
+func set_demon_form(enabled: bool) -> void:
+	if dead or demon_form_visual == null:
+		return
+	demon_form_visual.set_active(enabled)
+
+
+func _setup_demon_form_visual() -> void:
+	var visual_script: Script = preload("res://scripts/visual/demon_form_visual.gd")
+	demon_form_visual = visual_script.new() as Node2D
+	demon_form_visual.name = "DemonFormVisual"
+	add_child(demon_form_visual)
+	demon_form_visual.setup(art)
+
+
 func _unhandled_input(event: InputEvent) -> void:
+	if event is InputEventKey and event.pressed and not event.echo and event.keycode == KEY_F:
+		if not dead and demon_form_visual != null:
+			set_demon_form(not demon_form_visual.active)
+		get_viewport().set_input_as_handled()
+		return
 	if event.is_action_pressed("ui_cancel"):
 		get_tree().change_scene_to_file("res://scenes/main_menu.tscn")
