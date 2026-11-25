@@ -19,6 +19,13 @@ const FEET_ROW: float = 364.0
 const ART_SCALE: float = 0.8
 const ATTACK_REACH: float = 80.0
 const HERO_LAYER: int = 8
+## Раскладка «марионетки» для ходьбы/бега/прыжка: верх тела и две ноги ниже подола плаща.
+const HIP_Y: float = 318.0
+const LEG_X0: float = 85.0
+const LEG_SPLIT: float = 125.0
+const LEG_X1: float = 180.0
+const PIVOT_BACK_X: float = 105.0
+const PIVOT_FRONT_X: float = 150.0
 const COYOTE_TIME: float = 0.10
 const JUMP_BUFFER: float = 0.12
 
@@ -63,6 +70,18 @@ var pose_state: String = "idle"
 var pose_scale: Vector2 = Vector2.ONE
 var pose_rot: float = 0.0
 var pose_off: Vector2 = Vector2.ZERO
+var rig: Node2D
+var rig_top: Sprite2D
+var rig_cape: Sprite2D
+var rig_leg_back: Sprite2D
+var rig_leg_front: Sprite2D
+var rig_tiles: Array[Texture2D] = []
+var rig_fps: float = 12.0
+var rig_phase: float = 0.0
+var leg_back_rot: float = 0.0
+var leg_front_rot: float = 0.0
+var leg_back_lift: float = 0.0
+var leg_front_lift: float = 0.0
 var demon_form_visual: DemonFormVisual
 var already_hit: Array[Node] = []
 
@@ -78,6 +97,7 @@ func _ready() -> void:
 		foot_y = capsule.height * 0.5 + body_shape.position.y
 	_build_sprite_frames()
 	_setup_demon_form_visual()
+	_build_rig()
 	attack_box.monitoring = false
 	attack_shape.disabled = true
 	attack_box.position = Vector2(ATTACK_REACH, -10.0)
@@ -338,6 +358,7 @@ func _update_pose(delta: float) -> void:
 	if invulnerable_remaining > 0.0 and not dead and pose_state != "hurt":
 		alpha = 0.55 if int(animation_clock * 24.0) % 2 == 0 else 1.0
 	art.modulate = Color(tint.r, tint.g, tint.b, alpha)
+	_update_rig(delta)
 
 
 ## Собирает SpriteFrames из чистых атласов. Все кадры 256x384.
@@ -353,6 +374,8 @@ func _build_sprite_frames() -> void:
 		push_warning("Hero: не найден ни один чистый idle-атлас, оставляю кадры из сцены.")
 		return
 
+	rig_tiles = idle_tiles
+	rig_fps = idle_fps
 	var walk_tiles: Array[Texture2D] = _slice_atlas(WALK_SOURCE)
 	has_real_walk = not walk_tiles.is_empty()
 
@@ -408,6 +431,115 @@ func _slice_atlas(source: Dictionary) -> Array[Texture2D]:
 		tile.region = Rect2((i % cols) * FRAME_W, floori(float(i) / float(cols)) * FRAME_H, FRAME_W, FRAME_H)
 		tiles.append(tile)
 	return tiles
+
+
+# ---------------------------------------------------------------- ноги (ходьба/бег/прыжок)
+
+func _build_rig() -> void:
+	if rig_tiles.is_empty():
+		return
+	var first := rig_tiles[0] as AtlasTexture
+	if first == null or first.atlas == null:
+		return
+	var atlas: Texture2D = first.atlas
+	rig = Node2D.new()
+	rig.name = "LegRig"
+	rig.visible = false
+	add_child(rig)
+	# Порядок отрисовки: ноги сзади, потом плащ и верх тела.
+	rig_leg_back = _make_rig_sprite(atlas)
+	rig_leg_front = _make_rig_sprite(atlas)
+	rig_cape = _make_rig_sprite(atlas)
+	rig_top = _make_rig_sprite(atlas)
+	# Начало координат узла rig — под ногами героя, единицы — пиксели кадра.
+	rig_leg_back.position = Vector2(PIVOT_BACK_X - float(FRAME_W) * 0.5, HIP_Y - FEET_ROW)
+	rig_leg_back.offset = Vector2(LEG_X0 - PIVOT_BACK_X, 0.0)
+	rig_leg_front.position = Vector2(PIVOT_FRONT_X - float(FRAME_W) * 0.5, HIP_Y - FEET_ROW)
+	rig_leg_front.offset = Vector2(LEG_SPLIT - PIVOT_FRONT_X, 0.0)
+	rig_cape.position = Vector2(-float(FRAME_W) * 0.5, HIP_Y - FEET_ROW)
+	rig_top.position = Vector2(-float(FRAME_W) * 0.5, -FEET_ROW)
+	# Тот же материал, что и у основного спрайта: белая форма работает и на ногах.
+	if art.material != null:
+		for part in [rig_leg_back, rig_leg_front, rig_cape, rig_top]:
+			part.material = art.material
+
+
+func _make_rig_sprite(atlas: Texture2D) -> Sprite2D:
+	var sprite := Sprite2D.new()
+	sprite.texture = atlas
+	sprite.centered = false
+	sprite.region_enabled = true
+	sprite.region_filter_clip_enabled = true
+	sprite.texture_filter = CanvasItem.TEXTURE_FILTER_LINEAR
+	rig.add_child(sprite)
+	return sprite
+
+
+func _update_rig(delta: float) -> void:
+	if rig == null:
+		return
+	var use_rig: bool = pose_state == "jump" or pose_state == "fall" \
+		or ((pose_state == "walk" or pose_state == "run") and not has_real_walk)
+	rig.visible = use_rig
+	art.visible = not use_rig
+	if not use_rig:
+		return
+
+	# Текущий кадр idle: плащ и волосы продолжают колыхаться.
+	var tile := rig_tiles[int(animation_clock * rig_fps) % rig_tiles.size()] as AtlasTexture
+	var o: Vector2 = tile.region.position
+	var leg_h: float = float(FRAME_H) - HIP_Y
+	rig_top.region_rect = Rect2(o.x, o.y, float(FRAME_W), HIP_Y)
+	rig_cape.region_rect = Rect2(o.x, o.y + HIP_Y, LEG_X0, leg_h)
+	rig_leg_back.region_rect = Rect2(o.x + LEG_X0, o.y + HIP_Y, LEG_SPLIT - LEG_X0, leg_h)
+	rig_leg_front.region_rect = Rect2(o.x + LEG_SPLIT, o.y + HIP_Y, LEG_X1 - LEG_SPLIT, leg_h)
+
+	# Углы и подъём ног. Назад — положительный угол, вперёд — отрицательный.
+	var target_back: float = 0.0
+	var target_front: float = 0.0
+	var lift_back: float = 0.0
+	var lift_front: float = 0.0
+	match pose_state:
+		"walk":
+			rig_phase += delta * 9.0
+			var s: float = sin(rig_phase)
+			target_back = deg_to_rad(20.0) * s
+			target_front = -target_back
+			lift_back = maxf(0.0, s) * 7.0
+			lift_front = maxf(0.0, -s) * 7.0
+		"run":
+			rig_phase += delta * 13.0
+			var s: float = sin(rig_phase)
+			target_back = deg_to_rad(32.0) * s
+			target_front = -target_back
+			lift_back = maxf(0.0, s) * 12.0
+			lift_front = maxf(0.0, -s) * 12.0
+		"jump":
+			target_back = deg_to_rad(28.0)
+			target_front = deg_to_rad(-32.0)
+			lift_back = 6.0
+			lift_front = 12.0
+		"fall":
+			target_back = deg_to_rad(10.0)
+			target_front = deg_to_rad(-14.0)
+			lift_back = 4.0
+			lift_front = 6.0
+
+	var k: float = 1.0 if delta <= 0.0 else 1.0 - exp(-30.0 * delta)
+	leg_back_rot = lerpf(leg_back_rot, target_back, k)
+	leg_front_rot = lerpf(leg_front_rot, target_front, k)
+	leg_back_lift = lerpf(leg_back_lift, lift_back, k)
+	leg_front_lift = lerpf(leg_front_lift, lift_front, k)
+	rig_leg_back.rotation = leg_back_rot
+	rig_leg_front.rotation = leg_front_rot
+	rig_leg_back.position.y = HIP_Y - FEET_ROW - leg_back_lift
+	rig_leg_front.position.y = HIP_Y - FEET_ROW - leg_front_lift
+
+	# Тот же трансформ, что у основного спрайта; взгляд влево — зеркало по X.
+	rig.position = art.position
+	rig.rotation = art.rotation
+	rig.scale = Vector2(art.scale.x * (1.0 if facing >= 0 else -1.0), art.scale.y)
+	rig.modulate = art.modulate
 
 
 # ---------------------------------------------------------------- белая форма
