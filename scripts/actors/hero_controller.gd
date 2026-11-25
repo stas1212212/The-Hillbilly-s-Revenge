@@ -1,13 +1,39 @@
 extends CharacterBody2D
-## Functional character prototype: movement, jump, three-hit combo, damage and knockback.
-## Replace placeholder single-image frames with hand-drawn sprite sheets later.
+## Элиан: движение, прыжок, комбо из трёх ударов, урон и отбрасывание.
+##
+## Анимация: «idle» (и «walk», если установлен walk-атлас) берутся из чистых
+## атласов 256x384. Остальные состояния (бег, прыжок, удар, урон, смерть)
+## собираются из того же чистого кадра и оживляются кодом: наклон, сжатие,
+## выпад и дуга удара. Старые полосы assets/characters/hero/sprites/*.png
+## были битой нарезкой (обрезанные кадры, мусор из соседних кадров) и больше
+## не используются. Когда появятся настоящие кадры, их можно добавить в
+## _build_sprite_frames() вместо процедурной позы.
+
 signal health_changed(current: int, maximum: int)
 signal died
 
+const FRAME_W: int = 256
+const FRAME_H: int = 384
+## Нижний непрозрачный ряд пикселей в кадрах idle: ноги героя.
+const FEET_ROW: float = 364.0
+const ART_SCALE: float = 0.8
+const ATTACK_REACH: float = 80.0
+const HERO_LAYER: int = 8
+const COYOTE_TIME: float = 0.10
+const JUMP_BUFFER: float = 0.12
+
+## Источники idle по приоритету: самый новый атлас, который установлен.
+const IDLE_SOURCES: Array = [
+	{"path": "res://assets/characters/hero/idle/elian_idle_25.png", "cols": 5, "rows": 5, "count": 25, "fps": 12.5},
+	{"path": "res://assets/characters/hero/idle/elian_idle_60.png", "cols": 10, "rows": 6, "count": 60, "fps": 30.0},
+	{"path": "res://assets/characters/hero/idle/elian_idle_12.png", "cols": 12, "rows": 1, "count": 12, "fps": 8.0},
+]
+const WALK_SOURCE: Dictionary = {"path": "res://assets/characters/hero/walk/elian_walk_16.png", "cols": 4, "rows": 4, "count": 16, "fps": 20.0}
+
 @export var move_speed: float = 235.0
 @export var run_speed: float = 340.0
-@export var jump_velocity: float = -420.0
-@export var gravity: float = 1100.0
+@export var jump_velocity: float = -620.0
+@export var gravity: float = 1500.0
 @export var max_health: int = 100
 @export var attack_damage: int = 20
 
@@ -15,50 +41,79 @@ signal died
 @onready var attack_box: Area2D = $AttackBox
 @onready var attack_shape: CollisionShape2D = $AttackBox/CollisionShape2D
 @onready var hurt_box: Area2D = $Hurtbox
+@onready var body_shape: CollisionShape2D = $CollisionShape2D
+
 var health: int = 100
 var combo: int = 0
 var attack_remaining: float = 0.0
+var attack_total: float = 0.3
 var combo_window: float = 0.0
 var queued_attack: bool = false
 var invulnerable_remaining: float = 0.0
+var hurt_remaining: float = 0.0
+var coyote_remaining: float = 0.0
+var jump_buffer_remaining: float = 0.0
 var facing: int = 1
 var dead: bool = false
 var animation_clock: float = 0.0
-var visual_origin: Vector2
-var baseline_art_scale: Vector2 = Vector2.ONE
-var refined_idle_loaded: bool = false
-var refined_walk_loaded: bool = false
+var foot_y: float = 47.0
+var has_real_walk: bool = false
+var w_was_down: bool = false
+var pose_state: String = "idle"
+var pose_scale: Vector2 = Vector2.ONE
+var pose_rot: float = 0.0
+var pose_off: Vector2 = Vector2.ZERO
 var demon_form_visual: DemonFormVisual
 var already_hit: Array[Node] = []
 
+
 func _ready() -> void:
+	add_to_group("hero")
+	# Герой на своём слое, сталкивается только с миром (слой 1): враги его не толкают.
+	collision_layer = HERO_LAYER
+	collision_mask = 1
 	health = max_health
-	_load_optional_sprite_strips()
-	visual_origin = art.position
-	baseline_art_scale = art.scale
-	_load_refined_idle_frames()
-	_load_idle_60_frames()
-	_load_idle_25_frames()
-	_load_walk_16_frames()
+	var capsule := body_shape.shape as CapsuleShape2D
+	if capsule != null:
+		foot_y = capsule.height * 0.5 + body_shape.position.y
+	_build_sprite_frames()
 	_setup_demon_form_visual()
 	attack_box.monitoring = false
 	attack_shape.disabled = true
+	attack_box.position = Vector2(ATTACK_REACH, -10.0)
 	hurt_box.add_to_group("hero_hurtbox")
+	_update_pose(0.0)
 	health_changed.emit(health, max_health)
+
+
+func is_dead() -> bool:
+	return dead
+
 
 func _physics_process(delta: float) -> void:
 	animation_clock += delta
 	invulnerable_remaining = maxf(0.0, invulnerable_remaining - delta)
-	if not is_on_floor():
+	hurt_remaining = maxf(0.0, hurt_remaining - delta)
+	coyote_remaining = maxf(0.0, coyote_remaining - delta)
+	jump_buffer_remaining = maxf(0.0, jump_buffer_remaining - delta)
+
+	if is_on_floor():
+		coyote_remaining = COYOTE_TIME
+	else:
 		velocity.y += gravity * delta
 
 	if dead:
 		velocity.x = move_toward(velocity.x, 0.0, 900.0 * delta)
 		move_and_slide()
+		_update_pose(delta)
 		return
 
-	if Input.is_action_just_pressed("ui_accept") and is_on_floor():
+	if _jump_just_pressed():
+		jump_buffer_remaining = JUMP_BUFFER
+	if jump_buffer_remaining > 0.0 and coyote_remaining > 0.0 and attack_remaining <= 0.0 and hurt_remaining <= 0.0:
 		velocity.y = jump_velocity
+		jump_buffer_remaining = 0.0
+		coyote_remaining = 0.0
 
 	var axis: float = Input.get_axis("ui_left", "ui_right")
 	if Input.is_key_pressed(KEY_A):
@@ -68,20 +123,22 @@ func _physics_process(delta: float) -> void:
 	axis = clampf(axis, -1.0, 1.0)
 	var sprinting: bool = Input.is_key_pressed(KEY_SHIFT)
 	var speed: float = run_speed if sprinting else move_speed
-	if absf(axis) > 0.01:
+	if hurt_remaining > 0.0:
+		axis = 0.0
+	elif absf(axis) > 0.01 and attack_remaining <= 0.0:
 		facing = -1 if axis < 0.0 else 1
 		art.flip_h = facing < 0
-		attack_box.position.x = 45.0 * facing
+		attack_box.position.x = ATTACK_REACH * float(facing)
 
-	if Input.is_key_pressed(KEY_J) and attack_remaining <= 0.0 and combo_window <= 0.0:
+	if _attack_held() and attack_remaining <= 0.0 and combo_window <= 0.0 and hurt_remaining <= 0.0:
 		_start_attack(1)
 
-	if attack_remaining > 0.0:
+	if hurt_remaining > 0.0:
+		velocity.x = move_toward(velocity.x, 0.0, 500.0 * delta)
+	elif attack_remaining > 0.0:
 		attack_remaining -= delta
-		velocity.x = move_toward(velocity.x, 0.0, 900.0 * delta)
-		if Input.is_action_just_pressed("ui_accept"):
-			pass
-		if Input.is_key_pressed(KEY_J):
+		velocity.x = move_toward(velocity.x, 0.0, 700.0 * delta)
+		if _attack_held():
 			queued_attack = true
 		if attack_remaining <= 0.0:
 			_finish_attack()
@@ -97,65 +154,51 @@ func _physics_process(delta: float) -> void:
 
 	move_and_slide()
 	_update_animation(axis, sprinting)
+	_update_pose(delta)
 	if attack_box.monitoring:
 		for area in attack_box.get_overlapping_areas():
 			_try_hit(area)
 
-func _update_animation(axis: float, sprinting: bool) -> void:
-	if attack_remaining > 0.0:
-		_play_if_available("attack_" + str(combo))
-		art.rotation = sin(animation_clock * 20.0) * 0.07 * facing
-	elif not is_on_floor():
-		_play_if_available("jump" if velocity.y < 0.0 else "fall")
-		art.rotation = 0.0
-	elif absf(axis) > 0.01:
-		_play_if_available("run" if sprinting else "walk")
-		art.rotation = 0.0
-	else:
-		_play_if_available("idle")
-		art.rotation = 0.0
 
-	if refined_walk_loaded and art.animation == "walk":
-		# Same 256x384 canvas and visual anchor as refined idle.
-		art.scale = Vector2(1.04, 1.04)
-		art.position = Vector2(0.0, -130.0)
-	elif refined_idle_loaded and art.animation == "idle":
-		# Новая стойка Еліана
-		art.scale = Vector2(1.04, 1.04)
-		art.position = Vector2(0.0, -130.0)
-	else:
-		# Остальные временные анимации
-		art.scale = Vector2(1.45, 1.45)
-		art.position = Vector2(0.0, -100.0)
-
-		if absf(axis) > 0.01 and is_on_floor():
-			art.position.y += sin(animation_clock * 12.0) * 2.0
+func _jump_just_pressed() -> bool:
+	var w_down: bool = Input.is_key_pressed(KEY_W)
+	var w_edge: bool = w_down and not w_was_down
+	w_was_down = w_down
+	return Input.is_action_just_pressed("ui_accept") or Input.is_action_just_pressed("ui_up") or w_edge
 
 
-func _play_if_available(name: String) -> void:
-	if art.sprite_frames != null and art.sprite_frames.has_animation(name) and art.animation != name:
-		art.play(name)
+func _attack_held() -> bool:
+	return Input.is_key_pressed(KEY_J) or Input.is_mouse_button_pressed(MOUSE_BUTTON_LEFT)
+
+
+# ---------------------------------------------------------------- бой
 
 func _start_attack(index: int) -> void:
 	combo = index
 	queued_attack = false
 	already_hit.clear()
-	attack_remaining = 0.23 + float(index) * 0.035
+	attack_total = 0.23 + float(index) * 0.035
+	attack_remaining = attack_total
 	combo_window = 0.0
+	velocity.x = float(facing) * (150.0 + 40.0 * float(index))
 	attack_shape.set_deferred("disabled", false)
 	attack_box.set_deferred("monitoring", true)
+	_spawn_slash(index)
+
 
 func _finish_attack() -> void:
 	attack_box.set_deferred("monitoring", false)
 	attack_shape.set_deferred("disabled", true)
 	combo_window = 0.24
 
+
 func _try_hit(area: Area2D) -> void:
 	if area == hurt_box or area in already_hit:
 		return
 	if area.has_method("receive_hit"):
 		already_hit.append(area)
-		area.receive_hit(attack_damage + combo * 5, Vector2(float(facing) * 220.0, -120.0))
+		area.receive_hit(attack_damage + combo * 5, Vector2(float(facing) * 240.0, -140.0))
+
 
 func receive_hit(damage: int, impulse: Vector2) -> void:
 	if dead or invulnerable_remaining > 0.0:
@@ -163,197 +206,211 @@ func receive_hit(damage: int, impulse: Vector2) -> void:
 	health = maxi(0, health - damage)
 	invulnerable_remaining = 0.65
 	velocity = impulse
+	attack_remaining = 0.0
+	combo_window = 0.0
+	combo = 0
+	queued_attack = false
+	_finish_attack()
+	combo_window = 0.0
 	health_changed.emit(health, max_health)
 	if health == 0:
 		dead = true
+		pose_state = "death"
 		_play_if_available("death")
 		died.emit()
 	else:
-		_play_if_available("hurt")
+		hurt_remaining = 0.28
 
 
-## Import the optional 256x256, five-column character strips supplied in the art patch.
-## The original one-frame SpriteFrames remain usable if the art has not been installed.
-func _load_optional_sprite_strips() -> void:
-	var names: Array[String] = [
-		"idle", "walk", "run", "jump", "fall",
-		"attack_1", "attack_2", "attack_3", "hurt", "death"
-	]
-	var directory := "res://assets/characters/hero/sprites/"
-	if not ResourceLoader.exists(directory + "idle.png"):
-		return
-	var frames := art.sprite_frames.duplicate(true) as SpriteFrames
-	for name in names:
-		var path := directory + name + ".png"
-		if not ResourceLoader.exists(path):
-			continue
-		var texture := load(path) as Texture2D
-		if texture == null:
-			continue
-		if not frames.has_animation(name):
-			frames.add_animation(name)
-		for i in range(frames.get_frame_count(name) - 1, -1, -1):
-			frames.remove_frame(name, i)
-		var count: int = int(texture.get_width() / 256)
-		for i in range(count):
-			var atlas := AtlasTexture.new()
-			atlas.atlas = texture
-			atlas.region = Rect2(i * 256, 0, 256, 256)
-			frames.add_frame(name, atlas)
-		frames.set_animation_speed(name, 16.0 if name == "run" else 12.0)
-		frames.set_animation_loop(name, name in ["idle", "walk", "run"])
-	art.sprite_frames = frames
-	art.scale = Vector2(0.6, 0.6)
-	art.position.y = -14.0
-	art.play("idle")
-
-## The clean 12-frame idle atlas is optional. Until its PNG is installed,
-## the existing project animations still work without missing-file errors.
-func _load_refined_idle_frames() -> void:
-	const IDLE_ATLAS_PATH: String = "res://assets/characters/hero/idle/elian_idle_12.png"
-	if not ResourceLoader.exists(IDLE_ATLAS_PATH):
-		return
-
-	var texture: Texture2D = load(IDLE_ATLAS_PATH) as Texture2D
-	if texture == null:
-		return
-	if texture.get_width() != 3072 or texture.get_height() != 384:
-		push_warning("Elian idle atlas must be 3072x384 (12 frames of 256x384).")
-		return
-
-	var frames: SpriteFrames = art.sprite_frames.duplicate(true) as SpriteFrames
-	if frames == null:
-		return
-	if not frames.has_animation("idle"):
-		frames.add_animation("idle")
-	for i in range(frames.get_frame_count("idle") - 1, -1, -1):
-		frames.remove_frame("idle", i)
-	for i in range(12):
-		var tile := AtlasTexture.new()
-		tile.atlas = texture
-		tile.region = Rect2(i * 256, 0, 256, 384)
-		frames.add_frame("idle", tile)
-
-	frames.set_animation_speed("idle", 8.0)
-	frames.set_animation_loop("idle", true)
-	art.sprite_frames = frames
-	refined_idle_loaded = true
-	art.play("idle")
+func heal(amount: int) -> bool:
+	if dead or health >= max_health:
+		return false
+	health = mini(max_health, health + amount)
+	health_changed.emit(health, max_health)
+	return true
 
 
-## Prefer the refined 60-frame standing atlas when installed. The file is
-## optional so existing projects still run if the PNG hasn't been copied yet.
-## Layout: 10 columns, 6 rows; each frame is 256x384 pixels.
-func _load_idle_60_frames() -> void:
-	const IDLE_60_PATH: String = "res://assets/characters/hero/idle/elian_idle_60.png"
-	if not ResourceLoader.exists(IDLE_60_PATH):
-		return
-
-	var texture: Texture2D = load(IDLE_60_PATH) as Texture2D
-	if texture == null:
-		return
-	if texture.get_width() != 2560 or texture.get_height() != 2304:
-		push_warning("Elian idle 60 atlas must be 2560x2304 (10x6 frames, 256x384 each).")
-		return
-
-	var frames: SpriteFrames = art.sprite_frames.duplicate(true) as SpriteFrames
-	if frames == null:
-		return
-	if not frames.has_animation("idle"):
-		frames.add_animation("idle")
-	for frame_index in range(frames.get_frame_count("idle") - 1, -1, -1):
-		frames.remove_frame("idle", frame_index)
-	for frame_index in range(60):
-		var atlas_frame := AtlasTexture.new()
-		atlas_frame.atlas = texture
-		atlas_frame.region = Rect2(
-			(frame_index % 10) * 256,
-			int(frame_index / 10) * 384,
-			256, 384
-		)
-		frames.add_frame("idle", atlas_frame)
-
-	frames.set_animation_speed("idle", 30.0)
-	frames.set_animation_loop("idle", true)
-	art.sprite_frames = frames
-	art.texture_filter = CanvasItem.TEXTURE_FILTER_LINEAR
-	refined_idle_loaded = true
-	art.play("idle")
-	art.set_frame_and_progress(0, 0.0)
+## Дуга удара: белый полумесяц перед героем, быстро гаснет.
+func _spawn_slash(index: int) -> void:
+	var slash := Line2D.new()
+	slash.z_index = 5
+	slash.width = 8.0 + float(index) * 3.0
+	slash.default_color = Color(1.0, 0.95, 0.85, 0.9)
+	slash.begin_cap_mode = Line2D.LINE_CAP_ROUND
+	slash.end_cap_mode = Line2D.LINE_CAP_ROUND
+	var radius: float = 100.0 + 12.0 * float(index)
+	var from_angle: float = deg_to_rad(-75.0)
+	var to_angle: float = deg_to_rad(45.0)
+	if index == 2:
+		from_angle = deg_to_rad(50.0)
+		to_angle = deg_to_rad(-60.0)
+	var centre := Vector2(float(facing) * 10.0, -35.0)
+	for i in range(13):
+		var a: float = lerpf(from_angle, to_angle, float(i) / 12.0)
+		slash.add_point(centre + Vector2(cos(a) * float(facing), sin(a)) * radius)
+	add_child(slash)
+	var tween := create_tween()
+	tween.tween_property(slash, "modulate:a", 0.0, 0.2)
+	tween.tween_callback(slash.queue_free)
 
 
-## Preferred latest idle: 25 cleaned, foot-aligned frames (5x5 x 256x384).
-## This runs AFTER the old 60-frame loader, so users can keep that asset
-## installed without accidentally playing it instead of the newer idle.
-## No image -> graceful fallback to older idle assets.
-func _load_idle_25_frames() -> void:
-	const IDLE_25_PATH: String = "res://assets/characters/hero/idle/elian_idle_25.png"
-	if not ResourceLoader.exists(IDLE_25_PATH):
-		return
+# ---------------------------------------------------------------- анимация
 
-	var texture: Texture2D = load(IDLE_25_PATH) as Texture2D
-	if texture == null:
-		return
-	if texture.get_width() != 1280 or texture.get_height() != 1920:
-		push_warning("Elian idle 25 atlas must be 1280x1920 (5x5 frames of 256x384).")
-		return
-
-	var frames: SpriteFrames = art.sprite_frames.duplicate(true) as SpriteFrames
-	if frames == null:
-		return
-	if not frames.has_animation("idle"):
-		frames.add_animation("idle")
-	for i in range(frames.get_frame_count("idle") - 1, -1, -1):
-		frames.remove_frame("idle", i)
-	for i in range(25):
-		var tile := AtlasTexture.new()
-		tile.atlas = texture
-		tile.region = Rect2((i % 5) * 256, int(i / 5) * 384, 256, 384)
-		frames.add_frame("idle", tile)
-
-	frames.set_animation_speed("idle", 12.5)
-	frames.set_animation_loop("idle", true)
-	art.sprite_frames = frames
-	art.texture_filter = CanvasItem.TEXTURE_FILTER_LINEAR
-	refined_idle_loaded = true
-	art.play("idle")
-	art.set_frame_and_progress(0, 0.0)
+func _update_animation(axis: float, sprinting: bool) -> void:
+	var state: String = "idle"
+	if dead:
+		state = "death"
+	elif hurt_remaining > 0.0:
+		state = "hurt"
+	elif attack_remaining > 0.0:
+		state = "attack_" + str(combo)
+	elif not is_on_floor():
+		state = "jump" if velocity.y < 0.0 else "fall"
+	elif absf(axis) > 0.01:
+		state = "run" if sprinting else "walk"
+	pose_state = state
+	_play_if_available(state)
 
 
-## Optional 16-frame side-view walking cycle, 4x4 cells at 256x384.
-## No PNG installed -> keep existing five-frame walk animation.
-func _load_walk_16_frames() -> void:
-	const WALK_16_PATH: String = "res://assets/characters/hero/walk/elian_walk_16.png"
-	if not ResourceLoader.exists(WALK_16_PATH):
+func _play_if_available(anim_name: String) -> void:
+	if art.sprite_frames != null and art.sprite_frames.has_animation(anim_name) and art.animation != anim_name:
+		art.play(anim_name)
+
+
+## Поза поверх кадра. Точка вращения и масштаба — под ногами героя.
+func _update_pose(delta: float) -> void:
+	var f: float = float(facing)
+	var target_scale: Vector2 = Vector2.ONE
+	var target_rot: float = 0.0
+	var target_off: Vector2 = Vector2.ZERO
+	var tint: Color = Color.WHITE
+	var speed: float = 16.0
+
+	match pose_state:
+		"walk":
+			target_rot = 0.04 * f
+			if not has_real_walk:
+				target_off.y = -absf(sin(animation_clock * 9.0)) * 5.0
+				target_rot = 0.06 * f + sin(animation_clock * 9.0) * 0.015
+		"run":
+			target_rot = 0.13 * f
+			target_scale = Vector2(1.03, 0.97)
+			target_off.y = -absf(sin(animation_clock * 13.0)) * 8.0
+		"jump":
+			target_scale = Vector2(0.93, 1.08)
+			target_rot = 0.08 * f
+		"fall":
+			target_scale = Vector2(0.96, 1.05)
+			target_rot = -0.05 * f
+		"attack_1", "attack_2", "attack_3":
+			speed = 28.0
+			var big: float = 1.4 if pose_state == "attack_3" else 1.0
+			var p: float = 1.0 - attack_remaining / maxf(attack_total, 0.001)
+			var windup: float = 0.3
+			if p < windup:
+				var w: float = p / windup
+				target_rot = -0.16 * f * w
+				target_off.x = -6.0 * f * w
+			else:
+				var s: float = minf((p - windup) / (windup * 1.2), 1.0)
+				target_rot = lerpf(-0.16, 0.22, s) * f * big
+				target_off.x = (-6.0 + 34.0 * s) * f * big
+				target_scale = Vector2(1.04, 0.97)
+		"hurt":
+			target_rot = -0.22 * f
+			target_off.x = -10.0 * f
+			tint = Color(1.0, 0.55, 0.55)
+		"death":
+			speed = 7.0
+			target_rot = -1.5 * f
+			target_off = Vector2(-26.0 * f, -30.0)
+
+	var k: float = 1.0 if delta <= 0.0 else 1.0 - exp(-speed * delta)
+	pose_scale = pose_scale.lerp(target_scale, k)
+	pose_rot = lerpf(pose_rot, target_rot, k)
+	pose_off = pose_off.lerp(target_off, k)
+
+	art.scale = Vector2(ART_SCALE, ART_SCALE) * pose_scale
+	art.rotation = pose_rot
+	art.position = Vector2(0.0, foot_y) + pose_off
+
+	var alpha: float = 1.0
+	if invulnerable_remaining > 0.0 and not dead and pose_state != "hurt":
+		alpha = 0.55 if int(animation_clock * 24.0) % 2 == 0 else 1.0
+	art.modulate = Color(tint.r, tint.g, tint.b, alpha)
+
+
+## Собирает SpriteFrames из чистых атласов. Все кадры 256x384.
+func _build_sprite_frames() -> void:
+	var idle_tiles: Array[Texture2D] = []
+	var idle_fps: float = 12.0
+	for source in IDLE_SOURCES:
+		idle_tiles = _slice_atlas(source)
+		if not idle_tiles.is_empty():
+			idle_fps = float(source["fps"])
+			break
+	if idle_tiles.is_empty():
+		push_warning("Hero: не найден ни один чистый idle-атлас, оставляю кадры из сцены.")
 		return
 
-	var texture: Texture2D = load(WALK_16_PATH) as Texture2D
-	if texture == null:
-		return
-	if texture.get_width() != 1024 or texture.get_height() != 1536:
-		push_warning("Elian walk atlas must be 1024x1536 (4x4 frames of 256x384).")
-		return
+	var walk_tiles: Array[Texture2D] = _slice_atlas(WALK_SOURCE)
+	has_real_walk = not walk_tiles.is_empty()
 
-	var frames: SpriteFrames = art.sprite_frames.duplicate(true) as SpriteFrames
-	if frames == null:
-		return
-	if not frames.has_animation("walk"):
-		frames.add_animation("walk")
-	for i in range(frames.get_frame_count("walk") - 1, -1, -1):
-		frames.remove_frame("walk", i)
-	for i in range(16):
-		var tile := AtlasTexture.new()
-		tile.atlas = texture
-		tile.region = Rect2((i % 4) * 256, int(i / 4) * 384, 256, 384)
-		frames.add_frame("walk", tile)
+	var frames := SpriteFrames.new()
+	if frames.has_animation("default"):
+		frames.remove_animation("default")
+	var still: Array[Texture2D] = [idle_tiles[0]]
+	var setup: Dictionary = {
+		"idle": [idle_tiles, idle_fps, true],
+		"walk": [walk_tiles if has_real_walk else idle_tiles, float(WALK_SOURCE["fps"]) if has_real_walk else idle_fps, true],
+		"run": [walk_tiles if has_real_walk else idle_tiles, float(WALK_SOURCE["fps"]) * 1.35 if has_real_walk else idle_fps, true],
+		"jump": [still, 1.0, false],
+		"fall": [still, 1.0, false],
+		"attack_1": [still, 1.0, false],
+		"attack_2": [still, 1.0, false],
+		"attack_3": [still, 1.0, false],
+		"hurt": [still, 1.0, false],
+		"death": [still, 1.0, false],
+	}
+	for anim_name in setup:
+		var entry: Array = setup[anim_name]
+		frames.add_animation(anim_name)
+		frames.set_animation_speed(anim_name, float(entry[1]))
+		frames.set_animation_loop(anim_name, bool(entry[2]))
+		for tile in entry[0]:
+			frames.add_frame(anim_name, tile)
 
-	frames.set_animation_speed("walk", 20.0)
-	frames.set_animation_loop("walk", true)
 	art.sprite_frames = frames
 	art.texture_filter = CanvasItem.TEXTURE_FILTER_LINEAR
-	refined_walk_loaded = true
+	art.centered = true
+	# Ноги в нижней строке кадра: сдвигаем текстуру так, чтобы ноги были в начале координат узла.
+	art.offset = Vector2(0.0, -(FEET_ROW - float(FRAME_H) * 0.5))
+	art.play("idle")
 
 
+func _slice_atlas(source: Dictionary) -> Array[Texture2D]:
+	var tiles: Array[Texture2D] = []
+	var path: String = source["path"]
+	if not ResourceLoader.exists(path):
+		return tiles
+	var texture := load(path) as Texture2D
+	if texture == null:
+		return tiles
+	var cols: int = source["cols"]
+	var rows: int = source["rows"]
+	var count: int = source["count"]
+	if texture.get_width() != cols * FRAME_W or texture.get_height() != rows * FRAME_H:
+		push_warning("%s: ожидался атлас %dx%d, а он %dx%d." % [path, cols * FRAME_W, rows * FRAME_H, texture.get_width(), texture.get_height()])
+		return tiles
+	for i in range(count):
+		var tile := AtlasTexture.new()
+		tile.atlas = texture
+		tile.region = Rect2((i % cols) * FRAME_W, floori(float(i) / float(cols)) * FRAME_H, FRAME_W, FRAME_H)
+		tiles.append(tile)
+	return tiles
+
+
+# ---------------------------------------------------------------- белая форма
 
 ## Visual-only prototype. Calling this from story/ability code is also supported.
 func set_demon_form(enabled: bool) -> void:
