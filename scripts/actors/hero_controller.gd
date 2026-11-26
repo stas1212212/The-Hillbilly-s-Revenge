@@ -1,34 +1,20 @@
 extends CharacterBody2D
 ## Элиан: движение, прыжок, комбо из трёх ударов, урон и отбрасывание.
 ##
-## Анимация: «idle» (и «walk», если установлен walk-атлас) берутся из чистых
-## атласов 256x384. Остальные состояния (бег, прыжок, удар, урон, смерть)
-## собираются из того же чистого кадра и оживляются кодом: наклон, сжатие,
-## выпад и дуга удара. Старые полосы assets/characters/hero/sprites/*.png
-## были битой нарезкой (обрезанные кадры, мусор из соседних кадров) и больше
-## не используются. Когда появятся настоящие кадры, их можно добавить в
-## _build_sprite_frames() вместо процедурной позы.
+## Анимация использует цельные кадры AnimatedSprite2D: чистый idle-атлас,
+## существующие циклы ходьбы/бега и покадровые состояния. Персонаж не
+## разрезается на части и не деформируется процедурным ригом.
 
 signal health_changed(current: int, maximum: int)
 signal died
 
 const FRAME_W: int = 256
 const FRAME_H: int = 384
-## Нижний непрозрачный ряд пикселей в кадрах idle: ноги героя.
-const FEET_ROW: float = 364.0
 const ART_SCALE: float = 0.8
 const ATTACK_REACH: float = 80.0
 const HERO_LAYER: int = 8
 const COYOTE_TIME: float = 0.10
 const JUMP_BUFFER: float = 0.12
-
-## Источники idle по приоритету: самый новый атлас, который установлен.
-const IDLE_SOURCES: Array = [
-	{"path": "res://assets/characters/hero/idle/elian_idle_25.png", "cols": 5, "rows": 5, "count": 25, "fps": 12.5},
-	{"path": "res://assets/characters/hero/idle/elian_idle_60.png", "cols": 10, "rows": 6, "count": 60, "fps": 30.0},
-	{"path": "res://assets/characters/hero/idle/elian_idle_12.png", "cols": 12, "rows": 1, "count": 12, "fps": 8.0},
-]
-const WALK_SOURCE: Dictionary = {"path": "res://assets/characters/hero/walk/elian_walk_16.png", "cols": 4, "rows": 4, "count": 16, "fps": 20.0}
 
 @export var move_speed: float = 235.0
 @export var run_speed: float = 340.0
@@ -307,7 +293,8 @@ func _apply_art_anchor() -> void:
 	if frame_texture == null:
 		return
 	art.centered = true
-	art.offset = Vector2(0.0, -float(frame_texture.get_height()) * 0.45)
+	var foot_row: float = float(frame_texture.get_height()) * 0.95
+	art.offset = Vector2(0.0, -(foot_row - float(frame_texture.get_height()) * 0.5))
 	art.scale = Vector2(ART_SCALE, ART_SCALE)
 	art.position = Vector2(0.0, foot_y)
 
@@ -329,6 +316,9 @@ func _load_optional_sprite_strips() -> void:
 			continue
 		var texture := load(path) as Texture2D
 		if texture == null:
+			continue
+		if texture.get_height() != 256 or texture.get_width() % 256 != 0:
+			push_warning("%s: ожидалась полоса из кадров 256x256, файл пропущен." % path)
 			continue
 		if not frames.has_animation(name):
 			frames.add_animation(name)
