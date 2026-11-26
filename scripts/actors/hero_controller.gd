@@ -19,16 +19,6 @@ const FEET_ROW: float = 364.0
 const ART_SCALE: float = 0.8
 const ATTACK_REACH: float = 80.0
 const HERO_LAYER: int = 8
-## Раскладка «марионетки» для ходьбы/бега/прыжка: верх тела и две ноги ниже подола плаща.
-const HIP_Y: float = 318.0
-const LEG_X0: float = 85.0
-const LEG_SPLIT: float = 125.0
-const LEG_X1: float = 180.0
-const PIVOT_BACK_X: float = 105.0
-const PIVOT_FRONT_X: float = 150.0
-## Длина шага: сколько пикселей проходит герой за полный цикл (левый + правый шаг).
-## Шаг привязан к скорости, поэтому ноги не скользят по земле.
-const STRIDE_LEN: float = 135.0
 const COYOTE_TIME: float = 0.10
 const JUMP_BUFFER: float = 0.12
 
@@ -67,52 +57,42 @@ var facing: int = 1
 var dead: bool = false
 var animation_clock: float = 0.0
 var foot_y: float = 47.0
-var has_real_walk: bool = false
+var refined_idle_loaded: bool = false
+var refined_walk_loaded: bool = false
 var w_was_down: bool = false
-var pose_state: String = "idle"
-var pose_scale: Vector2 = Vector2.ONE
-var pose_rot: float = 0.0
-var pose_off: Vector2 = Vector2.ZERO
-var rig: Node2D
-var rig_top: Sprite2D
-var rig_cape: Sprite2D
-var rig_leg_back: Sprite2D
-var rig_leg_front: Sprite2D
-var rig_tiles: Array[Texture2D] = []
-var rig_fps: float = 12.0
-var rig_torso: Node2D
-var step_phase: float = 0.0
-var step_angle: float = 0.0
-var squash: float = 0.0
-var squash_vel: float = 0.0
-var torso_rot: float = 0.0
-var torso_vel: float = 0.0
-var floor_prev: bool = true
-var leg_back_rot: float = 0.0
-var leg_front_rot: float = 0.0
-var leg_back_lift: float = 0.0
-var leg_front_lift: float = 0.0
 var demon_form_visual: DemonFormVisual
 var already_hit: Array[Node] = []
 
 
 func _ready() -> void:
 	add_to_group("hero")
-	# Герой на своём слое, сталкивается только с миром (слой 1): враги его не толкают.
+	# Герой сталкивается с миром, но не отталкивается противниками.
 	collision_layer = HERO_LAYER
 	collision_mask = 1
 	health = max_health
+
 	var capsule := body_shape.shape as CapsuleShape2D
 	if capsule != null:
 		foot_y = capsule.height * 0.5 + body_shape.position.y
-	_build_sprite_frames()
+
+	# Возвращаем покадровые анимации, которые использовались до процедурного рига.
+	_load_optional_sprite_strips()
+	_load_refined_idle_frames()
+	_load_idle_60_frames()
+	_load_idle_25_frames()
+	_load_walk_16_frames()
+
+	art.centered = true
+	art.texture_filter = CanvasItem.TEXTURE_FILTER_LINEAR
+	art.scale = Vector2(ART_SCALE, ART_SCALE)
+	art.position = Vector2(0.0, foot_y)
+	_apply_art_anchor()
+
 	_setup_demon_form_visual()
-	_build_rig()
 	attack_box.monitoring = false
 	attack_shape.disabled = true
 	attack_box.position = Vector2(ATTACK_REACH, -10.0)
 	hurt_box.add_to_group("hero_hurtbox")
-	_update_pose(0.0)
 	health_changed.emit(health, max_health)
 
 
@@ -121,6 +101,7 @@ func is_dead() -> bool:
 
 
 func _physics_process(delta: float) -> void:
+	animation_clock += delta
 	invulnerable_remaining = maxf(0.0, invulnerable_remaining - delta)
 	hurt_remaining = maxf(0.0, hurt_remaining - delta)
 	coyote_remaining = maxf(0.0, coyote_remaining - delta)
@@ -142,9 +123,6 @@ func _physics_process(delta: float) -> void:
 		velocity.y = jump_velocity
 		jump_buffer_remaining = 0.0
 		coyote_remaining = 0.0
-		squash = -0.16
-		squash_vel = 0.0
-		_spawn_dust(3, 14.0)
 
 	var axis: float = Input.get_axis("ui_left", "ui_right")
 	if Input.is_key_pressed(KEY_A):
@@ -154,6 +132,7 @@ func _physics_process(delta: float) -> void:
 	axis = clampf(axis, -1.0, 1.0)
 	var sprinting: bool = Input.is_key_pressed(KEY_SHIFT)
 	var speed: float = run_speed if sprinting else move_speed
+
 	if hurt_remaining > 0.0:
 		axis = 0.0
 	elif absf(axis) > 0.01 and attack_remaining <= 0.0:
@@ -174,10 +153,8 @@ func _physics_process(delta: float) -> void:
 		if attack_remaining <= 0.0:
 			_finish_attack()
 	else:
-		var accel: float = 4200.0 if absf(axis) < 0.01 else 3400.0
-		if not is_on_floor():
-			accel = 2000.0
-		velocity.x = move_toward(velocity.x, axis * speed, accel * delta)
+		# Возвращено прежнее прямое управление скоростью без искусственного разгона.
+		velocity.x = axis * speed
 		if combo_window > 0.0:
 			combo_window -= delta
 			if queued_attack and combo < 3:
@@ -186,15 +163,7 @@ func _physics_process(delta: float) -> void:
 				combo = 0
 				queued_attack = false
 
-	var pre_vy: float = velocity.y
 	move_and_slide()
-	var landed: bool = is_on_floor() and not floor_prev
-	floor_prev = is_on_floor()
-	if landed and pre_vy > 160.0:
-		var impact: float = clampf(pre_vy / 1000.0, 0.0, 1.0)
-		squash = 0.08 + 0.20 * impact
-		squash_vel = 0.0
-		_spawn_dust(2 + int(impact * 4.0), 18.0)
 	_update_animation(axis, sprinting)
 	if attack_box.monitoring:
 		for area in attack_box.get_overlapping_areas():
@@ -256,11 +225,11 @@ func receive_hit(damage: int, impulse: Vector2) -> void:
 	health_changed.emit(health, max_health)
 	if health == 0:
 		dead = true
-		pose_state = "death"
 		_play_if_available("death")
 		died.emit()
 	else:
 		hurt_remaining = 0.28
+		_play_if_available("hurt")
 
 
 func heal(amount: int) -> bool:
@@ -297,56 +266,8 @@ func _spawn_slash(index: int) -> void:
 
 # ---------------------------------------------------------------- анимация
 
-## Вся визуальная часть считается здесь, каждый кадр экрана (60 FPS и выше),
-## а не в физическом тике, поэтому движение плавное на любой частоте монитора.
-func _process(delta: float) -> void:
-	var dt: float = minf(delta, 1.0 / 30.0)
-	animation_clock += delta
-	# Пружина сжатия/растяжения: приземление, отрыв от земли.
-	squash_vel += (-320.0 * squash - 20.0 * squash_vel) * dt
-	squash += squash_vel * dt
-	# Фаза шага растёт со скоростью: 0..1 — полный цикл (два шага).
-	if is_on_floor() and not dead:
-		var before: int = floori(step_phase * 2.0)
-		step_phase += absf(velocity.x) * dt / STRIDE_LEN
-		if step_phase >= 1.0:
-			step_phase -= 1.0
-		var after: int = floori(step_phase * 2.0)
-		if after != before and absf(velocity.x) > 260.0:
-			_spawn_dust(2, 10.0)
-	step_angle = step_phase * TAU
-	_update_pose(delta)
-
-
-func _speed_ratio() -> float:
-	return clampf((absf(velocity.x) - 100.0) / 240.0, 0.0, 1.0)
-
-
-## Облачко пыли под ногами. Живёт в родителе героя, поэтому остаётся на месте.
-func _spawn_dust(count: int, spread: float) -> void:
-	var host: Node = get_parent()
-	if host == null:
-		return
-	for i in range(count):
-		var puff := Polygon2D.new()
-		var points := PackedVector2Array()
-		for j in range(10):
-			var a: float = float(j) / 10.0 * TAU
-			points.append(Vector2(cos(a), sin(a)) * randf_range(4.0, 8.0))
-		puff.polygon = points
-		puff.color = Color(0.80, 0.70, 0.54, 0.55)
-		puff.z_index = 1
-		host.add_child(puff)
-		puff.global_position = global_position + Vector2(randf_range(-spread, spread), foot_y - 4.0)
-		var drift := Vector2(randf_range(-26.0, 26.0) - velocity.x * 0.08, randf_range(-26.0, -8.0))
-		var tween := puff.create_tween()
-		tween.set_parallel(true)
-		tween.tween_property(puff, "position", puff.position + drift, 0.45)
-		tween.tween_property(puff, "scale", Vector2(2.2, 2.2), 0.45)
-		tween.tween_property(puff, "modulate:a", 0.0, 0.45)
-		tween.chain().tween_callback(puff.queue_free)
-
-
+## Состояние выбирает полноценный кадр из SpriteFrames; сам рисунок не разрезается
+## и не деформируется по частям.
 func _update_animation(axis: float, sprinting: bool) -> void:
 	var state: String = "idle"
 	if dead:
@@ -357,10 +278,15 @@ func _update_animation(axis: float, sprinting: bool) -> void:
 		state = "attack_" + str(combo)
 	elif not is_on_floor():
 		state = "jump" if velocity.y < 0.0 else "fall"
-	elif absf(velocity.x) > 25.0:
-		state = "run" if absf(velocity.x) > (move_speed + run_speed) * 0.5 else "walk"
-	pose_state = state
+	elif absf(axis) > 0.01:
+		state = "run" if sprinting else "walk"
+
 	_play_if_available(state)
+	if state.begins_with("attack_"):
+		art.rotation = sin(animation_clock * 20.0) * 0.07 * float(facing)
+	else:
+		art.rotation = 0.0
+	_apply_art_anchor()
 
 
 func _play_if_available(anim_name: String) -> void:
@@ -368,261 +294,203 @@ func _play_if_available(anim_name: String) -> void:
 		art.play(anim_name)
 
 
-## Поза поверх кадра. Точка вращения и масштаба — под ногами героя.
-func _update_pose(delta: float) -> void:
-	var f: float = float(facing)
-	var target_scale: Vector2 = Vector2.ONE
-	var target_rot: float = 0.0
-	var target_off: Vector2 = Vector2.ZERO
-	var tint: Color = Color.WHITE
-	var speed: float = 16.0
-
-	match pose_state:
-		"walk", "run":
-			speed = 40.0
-			var sr: float = _speed_ratio()
-			target_rot = lerpf(0.02, 0.07, sr) * f
-			if not has_real_walk:
-				# Тело выше всего, когда ноги под ним, и ниже в момент шага.
-				target_off.y = -absf(cos(step_angle)) * lerpf(3.0, 8.0, sr)
-				target_scale = Vector2(1.0 + 0.02 * sr, 1.0 - 0.02 * sr)
-		"jump", "fall":
-			var stretch: float = clampf(absf(velocity.y) / 900.0, 0.0, 1.0) * 0.10
-			target_scale = Vector2(1.0 - stretch * 0.4, 1.0 + stretch)
-			target_rot = (0.06 if pose_state == "jump" else -0.04) * f
-		"attack_1", "attack_2", "attack_3":
-			speed = 28.0
-			var big: float = 1.4 if pose_state == "attack_3" else 1.0
-			var p: float = 1.0 - attack_remaining / maxf(attack_total, 0.001)
-			var windup: float = 0.3
-			if p < windup:
-				var w: float = p / windup
-				target_rot = -0.16 * f * w
-				target_off.x = -6.0 * f * w
-			else:
-				var s: float = minf((p - windup) / (windup * 1.2), 1.0)
-				target_rot = lerpf(-0.16, 0.22, s) * f * big
-				target_off.x = (-6.0 + 34.0 * s) * f * big
-				target_scale = Vector2(1.04, 0.97)
-		"hurt":
-			target_rot = -0.22 * f
-			target_off.x = -10.0 * f
-			tint = Color(1.0, 0.55, 0.55)
-		"death":
-			speed = 7.0
-			target_rot = -1.5 * f
-			target_off = Vector2(-26.0 * f, -30.0)
-
-	var k: float = 1.0 if delta <= 0.0 else 1.0 - exp(-speed * delta)
-	pose_scale = pose_scale.lerp(target_scale, k)
-	pose_rot = lerpf(pose_rot, target_rot, k)
-	pose_off = pose_off.lerp(target_off, k)
-
-	art.scale = Vector2(ART_SCALE, ART_SCALE) * pose_scale * Vector2(1.0 + squash * 0.6, 1.0 - squash)
-	art.rotation = pose_rot
-	art.position = Vector2(0.0, foot_y) + pose_off
-
-	var alpha: float = 1.0
-	if invulnerable_remaining > 0.0 and not dead and pose_state != "hurt":
-		alpha = 0.55 if int(animation_clock * 24.0) % 2 == 0 else 1.0
-	art.modulate = Color(tint.r, tint.g, tint.b, alpha)
-	_update_rig(delta)
+## Атласы idle имеют высоту 384, старые циклы ходьбы/бега — 256.
+## Смещение рассчитывается по высоте кадра, чтобы ноги оставались на земле.
+func _apply_art_anchor() -> void:
+	if art.sprite_frames == null:
+		return
+	if not art.sprite_frames.has_animation(art.animation):
+		return
+	if art.sprite_frames.get_frame_count(art.animation) <= 0:
+		return
+	var frame_texture: Texture2D = art.sprite_frames.get_frame_texture(art.animation, art.frame)
+	if frame_texture == null:
+		return
+	art.centered = true
+	art.offset = Vector2(0.0, -float(frame_texture.get_height()) * 0.45)
+	art.scale = Vector2(ART_SCALE, ART_SCALE)
+	art.position = Vector2(0.0, foot_y)
 
 
-## Собирает SpriteFrames из чистых атласов. Все кадры 256x384.
-func _build_sprite_frames() -> void:
-	var idle_tiles: Array[Texture2D] = []
-	var idle_fps: float = 12.0
-	for source in IDLE_SOURCES:
-		idle_tiles = _slice_atlas(source)
-		if not idle_tiles.is_empty():
-			idle_fps = float(source["fps"])
-			break
-	if idle_tiles.is_empty():
-		push_warning("Hero: не найден ни один чистый idle-атлас, оставляю кадры из сцены.")
+## Import the optional 256x256, five-column character strips supplied in the art patch.
+## The original one-frame SpriteFrames remain usable if the art has not been installed.
+func _load_optional_sprite_strips() -> void:
+	var names: Array[String] = [
+		"idle", "walk", "run", "jump", "fall",
+		"attack_1", "attack_2", "attack_3", "hurt", "death"
+	]
+	var directory := "res://assets/characters/hero/sprites/"
+	if not ResourceLoader.exists(directory + "idle.png"):
+		return
+	var frames := art.sprite_frames.duplicate(true) as SpriteFrames
+	for name in names:
+		var path := directory + name + ".png"
+		if not ResourceLoader.exists(path):
+			continue
+		var texture := load(path) as Texture2D
+		if texture == null:
+			continue
+		if not frames.has_animation(name):
+			frames.add_animation(name)
+		for i in range(frames.get_frame_count(name) - 1, -1, -1):
+			frames.remove_frame(name, i)
+		var count: int = int(texture.get_width() / 256)
+		for i in range(count):
+			var atlas := AtlasTexture.new()
+			atlas.atlas = texture
+			atlas.region = Rect2(i * 256, 0, 256, 256)
+			frames.add_frame(name, atlas)
+		frames.set_animation_speed(name, 16.0 if name == "run" else 12.0)
+		frames.set_animation_loop(name, name in ["idle", "walk", "run"])
+	art.sprite_frames = frames
+	art.centered = true
+	art.play("idle")
+
+## The clean 12-frame idle atlas is optional. Until its PNG is installed,
+## the existing project animations still work without missing-file errors.
+func _load_refined_idle_frames() -> void:
+	const IDLE_ATLAS_PATH: String = "res://assets/characters/hero/idle/elian_idle_12.png"
+	if not ResourceLoader.exists(IDLE_ATLAS_PATH):
 		return
 
-	rig_tiles = idle_tiles
-	rig_fps = idle_fps
-	var walk_tiles: Array[Texture2D] = _slice_atlas(WALK_SOURCE)
-	has_real_walk = not walk_tiles.is_empty()
+	var texture: Texture2D = load(IDLE_ATLAS_PATH) as Texture2D
+	if texture == null:
+		return
+	if texture.get_width() != 3072 or texture.get_height() != 384:
+		push_warning("Elian idle atlas must be 3072x384 (12 frames of 256x384).")
+		return
 
-	var frames := SpriteFrames.new()
-	if frames.has_animation("default"):
-		frames.remove_animation("default")
-	var still: Array[Texture2D] = [idle_tiles[0]]
-	var setup: Dictionary = {
-		"idle": [idle_tiles, idle_fps, true],
-		"walk": [walk_tiles if has_real_walk else idle_tiles, float(WALK_SOURCE["fps"]) if has_real_walk else idle_fps, true],
-		"run": [walk_tiles if has_real_walk else idle_tiles, float(WALK_SOURCE["fps"]) * 1.35 if has_real_walk else idle_fps, true],
-		"jump": [still, 1.0, false],
-		"fall": [still, 1.0, false],
-		"attack_1": [still, 1.0, false],
-		"attack_2": [still, 1.0, false],
-		"attack_3": [still, 1.0, false],
-		"hurt": [still, 1.0, false],
-		"death": [still, 1.0, false],
-	}
-	for anim_name in setup:
-		var entry: Array = setup[anim_name]
-		frames.add_animation(anim_name)
-		frames.set_animation_speed(anim_name, float(entry[1]))
-		frames.set_animation_loop(anim_name, bool(entry[2]))
-		for tile in entry[0]:
-			frames.add_frame(anim_name, tile)
+	var frames: SpriteFrames = art.sprite_frames.duplicate(true) as SpriteFrames
+	if frames == null:
+		return
+	if not frames.has_animation("idle"):
+		frames.add_animation("idle")
+	for i in range(frames.get_frame_count("idle") - 1, -1, -1):
+		frames.remove_frame("idle", i)
+	for i in range(12):
+		var tile := AtlasTexture.new()
+		tile.atlas = texture
+		tile.region = Rect2(i * 256, 0, 256, 384)
+		frames.add_frame("idle", tile)
 
+	frames.set_animation_speed("idle", 8.0)
+	frames.set_animation_loop("idle", true)
 	art.sprite_frames = frames
-	art.texture_filter = CanvasItem.TEXTURE_FILTER_LINEAR
-	art.centered = true
-	# Ноги в нижней строке кадра: сдвигаем текстуру так, чтобы ноги были в начале координат узла.
-	art.offset = Vector2(0.0, -(FEET_ROW - float(FRAME_H) * 0.5))
+	refined_idle_loaded = true
 	art.play("idle")
 
 
-func _slice_atlas(source: Dictionary) -> Array[Texture2D]:
-	var tiles: Array[Texture2D] = []
-	var path: String = source["path"]
-	if not ResourceLoader.exists(path):
-		return tiles
-	var texture := load(path) as Texture2D
+## Prefer the refined 60-frame standing atlas when installed. The file is
+## optional so existing projects still run if the PNG hasn't been copied yet.
+## Layout: 10 columns, 6 rows; each frame is 256x384 pixels.
+func _load_idle_60_frames() -> void:
+	const IDLE_60_PATH: String = "res://assets/characters/hero/idle/elian_idle_60.png"
+	if not ResourceLoader.exists(IDLE_60_PATH):
+		return
+
+	var texture: Texture2D = load(IDLE_60_PATH) as Texture2D
 	if texture == null:
-		return tiles
-	var cols: int = source["cols"]
-	var rows: int = source["rows"]
-	var count: int = source["count"]
-	if texture.get_width() != cols * FRAME_W or texture.get_height() != rows * FRAME_H:
-		push_warning("%s: ожидался атлас %dx%d, а он %dx%d." % [path, cols * FRAME_W, rows * FRAME_H, texture.get_width(), texture.get_height()])
-		return tiles
-	for i in range(count):
+		return
+	if texture.get_width() != 2560 or texture.get_height() != 2304:
+		push_warning("Elian idle 60 atlas must be 2560x2304 (10x6 frames, 256x384 each).")
+		return
+
+	var frames: SpriteFrames = art.sprite_frames.duplicate(true) as SpriteFrames
+	if frames == null:
+		return
+	if not frames.has_animation("idle"):
+		frames.add_animation("idle")
+	for frame_index in range(frames.get_frame_count("idle") - 1, -1, -1):
+		frames.remove_frame("idle", frame_index)
+	for frame_index in range(60):
+		var atlas_frame := AtlasTexture.new()
+		atlas_frame.atlas = texture
+		atlas_frame.region = Rect2(
+			(frame_index % 10) * 256,
+			int(frame_index / 10) * 384,
+			256, 384
+		)
+		frames.add_frame("idle", atlas_frame)
+
+	frames.set_animation_speed("idle", 30.0)
+	frames.set_animation_loop("idle", true)
+	art.sprite_frames = frames
+	art.texture_filter = CanvasItem.TEXTURE_FILTER_LINEAR
+	refined_idle_loaded = true
+	art.play("idle")
+	art.set_frame_and_progress(0, 0.0)
+
+
+## Preferred latest idle: 25 cleaned, foot-aligned frames (5x5 x 256x384).
+## This runs AFTER the old 60-frame loader, so users can keep that asset
+## installed without accidentally playing it instead of the newer idle.
+## No image -> graceful fallback to older idle assets.
+func _load_idle_25_frames() -> void:
+	const IDLE_25_PATH: String = "res://assets/characters/hero/idle/elian_idle_25.png"
+	if not ResourceLoader.exists(IDLE_25_PATH):
+		return
+
+	var texture: Texture2D = load(IDLE_25_PATH) as Texture2D
+	if texture == null:
+		return
+	if texture.get_width() != 1280 or texture.get_height() != 1920:
+		push_warning("Elian idle 25 atlas must be 1280x1920 (5x5 frames of 256x384).")
+		return
+
+	var frames: SpriteFrames = art.sprite_frames.duplicate(true) as SpriteFrames
+	if frames == null:
+		return
+	if not frames.has_animation("idle"):
+		frames.add_animation("idle")
+	for i in range(frames.get_frame_count("idle") - 1, -1, -1):
+		frames.remove_frame("idle", i)
+	for i in range(25):
 		var tile := AtlasTexture.new()
 		tile.atlas = texture
-		tile.region = Rect2((i % cols) * FRAME_W, floori(float(i) / float(cols)) * FRAME_H, FRAME_W, FRAME_H)
-		tiles.append(tile)
-	return tiles
+		tile.region = Rect2((i % 5) * 256, int(i / 5) * 384, 256, 384)
+		frames.add_frame("idle", tile)
+
+	frames.set_animation_speed("idle", 12.5)
+	frames.set_animation_loop("idle", true)
+	art.sprite_frames = frames
+	art.texture_filter = CanvasItem.TEXTURE_FILTER_LINEAR
+	refined_idle_loaded = true
+	art.play("idle")
+	art.set_frame_and_progress(0, 0.0)
 
 
-# ---------------------------------------------------------------- ноги (ходьба/бег/прыжок)
-
-func _build_rig() -> void:
-	if rig_tiles.is_empty():
+## Optional 16-frame side-view walking cycle, 4x4 cells at 256x384.
+## No PNG installed -> keep existing five-frame walk animation.
+func _load_walk_16_frames() -> void:
+	const WALK_16_PATH: String = "res://assets/characters/hero/walk/elian_walk_16.png"
+	if not ResourceLoader.exists(WALK_16_PATH):
 		return
-	var first := rig_tiles[0] as AtlasTexture
-	if first == null or first.atlas == null:
+
+	var texture: Texture2D = load(WALK_16_PATH) as Texture2D
+	if texture == null:
 		return
-	var atlas: Texture2D = first.atlas
-	rig = Node2D.new()
-	rig.name = "LegRig"
-	rig.visible = false
-	add_child(rig)
-	var half_w: float = float(FRAME_W) * 0.5
-	# Порядок отрисовки: ноги сзади, потом плащ, потом верх тела на шарнире в бёдрах.
-	rig_leg_back = _make_rig_sprite(atlas, rig)
-	rig_leg_front = _make_rig_sprite(atlas, rig)
-	rig_cape = _make_rig_sprite(atlas, rig)
-	rig_torso = Node2D.new()
-	rig_torso.position = Vector2(0.0, HIP_Y - FEET_ROW)
-	rig.add_child(rig_torso)
-	rig_top = _make_rig_sprite(atlas, rig_torso)
-	# Начало координат узла rig — под ногами героя, единицы — пиксели кадра.
-	rig_leg_back.position = Vector2(PIVOT_BACK_X - half_w, HIP_Y - FEET_ROW)
-	rig_leg_back.offset = Vector2(LEG_X0 - PIVOT_BACK_X, 0.0)
-	rig_leg_front.position = Vector2(PIVOT_FRONT_X - half_w, HIP_Y - FEET_ROW)
-	rig_leg_front.offset = Vector2(LEG_SPLIT - PIVOT_FRONT_X, 0.0)
-	rig_cape.position = Vector2(-half_w, HIP_Y - FEET_ROW)
-	rig_top.position = Vector2(-half_w, -HIP_Y)
-	# Тот же материал, что и у основного спрайта: белая форма работает и на ногах.
-	if art.material != null:
-		for part in [rig_leg_back, rig_leg_front, rig_cape, rig_top]:
-			part.material = art.material
-
-
-func _make_rig_sprite(atlas: Texture2D, parent: Node) -> Sprite2D:
-	var sprite := Sprite2D.new()
-	sprite.texture = atlas
-	sprite.centered = false
-	sprite.region_enabled = true
-	sprite.region_filter_clip_enabled = true
-	sprite.texture_filter = CanvasItem.TEXTURE_FILTER_LINEAR
-	parent.add_child(sprite)
-	return sprite
-
-
-func _update_rig(delta: float) -> void:
-	if rig == null:
+	if texture.get_width() != 1024 or texture.get_height() != 1536:
+		push_warning("Elian walk atlas must be 1024x1536 (4x4 frames of 256x384).")
 		return
-	var use_rig: bool = pose_state == "jump" or pose_state == "fall" \
-		or ((pose_state == "walk" or pose_state == "run") and not has_real_walk)
-	rig.visible = use_rig
-	art.visible = not use_rig
-	if not use_rig:
-		torso_rot = 0.0
-		torso_vel = 0.0
+
+	var frames: SpriteFrames = art.sprite_frames.duplicate(true) as SpriteFrames
+	if frames == null:
 		return
-	var dt: float = minf(delta, 1.0 / 30.0)
+	if not frames.has_animation("walk"):
+		frames.add_animation("walk")
+	for i in range(frames.get_frame_count("walk") - 1, -1, -1):
+		frames.remove_frame("walk", i)
+	for i in range(16):
+		var tile := AtlasTexture.new()
+		tile.atlas = texture
+		tile.region = Rect2((i % 4) * 256, int(i / 4) * 384, 256, 384)
+		frames.add_frame("walk", tile)
 
-	# Текущий кадр idle: плащ и волосы продолжают колыхаться.
-	var tile := rig_tiles[int(animation_clock * rig_fps) % rig_tiles.size()] as AtlasTexture
-	var o: Vector2 = tile.region.position
-	var leg_h: float = float(FRAME_H) - HIP_Y
-	rig_top.region_rect = Rect2(o.x, o.y, float(FRAME_W), HIP_Y)
-	rig_cape.region_rect = Rect2(o.x, o.y + HIP_Y, LEG_X0, leg_h)
-	rig_leg_back.region_rect = Rect2(o.x + LEG_X0, o.y + HIP_Y, LEG_SPLIT - LEG_X0, leg_h)
-	rig_leg_front.region_rect = Rect2(o.x + LEG_SPLIT, o.y + HIP_Y, LEG_X1 - LEG_SPLIT, leg_h)
-
-	# Углы и подъём ног. Назад — положительный угол, вперёд — отрицательный.
-	var target_back: float = 0.0
-	var target_front: float = 0.0
-	var lift_back: float = 0.0
-	var lift_front: float = 0.0
-	var torso_target: float = 0.0
-	match pose_state:
-		"walk", "run":
-			var sr: float = _speed_ratio()
-			# При остановке шаг плавно сходит на нет, без рывка в стойку.
-			var fade: float = clampf(absf(velocity.x) / 120.0, 0.0, 1.0)
-			var amp: float = deg_to_rad(lerpf(12.0, 34.0, sr)) * fade
-			var lift: float = lerpf(6.0, 13.0, sr) * fade
-			target_back = amp * sin(step_angle)
-			target_front = -target_back
-			# Ступня поднимается в середине махового движения, когда нога идёт вперёд.
-			lift_back = lift * maxf(0.0, -cos(step_angle))
-			lift_front = lift * maxf(0.0, cos(step_angle))
-			torso_target = lerpf(0.03, 0.11, sr) + sin(step_angle * 2.0) * 0.02 * fade
-		"jump":
-			var rise: float = clampf(-velocity.y / absf(jump_velocity), 0.0, 1.0)
-			target_back = deg_to_rad(10.0 + 24.0 * rise)
-			target_front = -deg_to_rad(14.0 + 26.0 * rise)
-			lift_back = 4.0 + 6.0 * rise
-			lift_front = 6.0 + 10.0 * rise
-			torso_target = 0.05
-		"fall":
-			var drop: float = clampf(velocity.y / 700.0, 0.0, 1.0)
-			target_back = deg_to_rad(10.0 - 6.0 * drop)
-			target_front = -deg_to_rad(14.0 - 8.0 * drop)
-			lift_back = 4.0 - 2.0 * drop
-			lift_front = 6.0 - 4.0 * drop
-			torso_target = -0.02
-
-	var k: float = 1.0 if delta <= 0.0 else 1.0 - exp(-40.0 * delta)
-	leg_back_rot = lerpf(leg_back_rot, target_back, k)
-	leg_front_rot = lerpf(leg_front_rot, target_front, k)
-	leg_back_lift = lerpf(leg_back_lift, lift_back, k)
-	leg_front_lift = lerpf(leg_front_lift, lift_front, k)
-	rig_leg_back.rotation = leg_back_rot
-	rig_leg_front.rotation = leg_front_rot
-	rig_leg_back.position.y = HIP_Y - FEET_ROW - leg_back_lift
-	rig_leg_front.position.y = HIP_Y - FEET_ROW - leg_front_lift
-
-	# Корпус наклоняется вокруг бёдер на пружине: при смене темпа он слегка запаздывает и покачивается.
-	torso_vel += ((torso_target - torso_rot) * 260.0 - torso_vel * 17.0) * dt
-	torso_rot += torso_vel * dt
-	rig_torso.rotation = torso_rot
-
-	# Тот же трансформ, что у основного спрайта; взгляд влево — зеркало по X.
-	rig.position = art.position
-	rig.rotation = art.rotation
-	rig.scale = Vector2(art.scale.x * (1.0 if facing >= 0 else -1.0), art.scale.y)
-	rig.modulate = art.modulate
+	frames.set_animation_speed("walk", 20.0)
+	frames.set_animation_loop("walk", true)
+	art.sprite_frames = frames
+	art.texture_filter = CanvasItem.TEXTURE_FILTER_LINEAR
+	refined_walk_loaded = true
 
 
 # ---------------------------------------------------------------- белая форма
