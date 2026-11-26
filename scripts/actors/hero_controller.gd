@@ -26,6 +26,9 @@ const LEG_SPLIT: float = 125.0
 const LEG_X1: float = 180.0
 const PIVOT_BACK_X: float = 105.0
 const PIVOT_FRONT_X: float = 150.0
+## Длина шага: сколько пикселей проходит герой за полный цикл (левый + правый шаг).
+## Шаг привязан к скорости, поэтому ноги не скользят по земле.
+const STRIDE_LEN: float = 135.0
 const COYOTE_TIME: float = 0.10
 const JUMP_BUFFER: float = 0.12
 
@@ -77,7 +80,14 @@ var rig_leg_back: Sprite2D
 var rig_leg_front: Sprite2D
 var rig_tiles: Array[Texture2D] = []
 var rig_fps: float = 12.0
-var rig_phase: float = 0.0
+var rig_torso: Node2D
+var step_phase: float = 0.0
+var step_angle: float = 0.0
+var squash: float = 0.0
+var squash_vel: float = 0.0
+var torso_rot: float = 0.0
+var torso_vel: float = 0.0
+var floor_prev: bool = true
 var leg_back_rot: float = 0.0
 var leg_front_rot: float = 0.0
 var leg_back_lift: float = 0.0
@@ -111,7 +121,6 @@ func is_dead() -> bool:
 
 
 func _physics_process(delta: float) -> void:
-	animation_clock += delta
 	invulnerable_remaining = maxf(0.0, invulnerable_remaining - delta)
 	hurt_remaining = maxf(0.0, hurt_remaining - delta)
 	coyote_remaining = maxf(0.0, coyote_remaining - delta)
@@ -125,7 +134,6 @@ func _physics_process(delta: float) -> void:
 	if dead:
 		velocity.x = move_toward(velocity.x, 0.0, 900.0 * delta)
 		move_and_slide()
-		_update_pose(delta)
 		return
 
 	if _jump_just_pressed():
@@ -134,6 +142,9 @@ func _physics_process(delta: float) -> void:
 		velocity.y = jump_velocity
 		jump_buffer_remaining = 0.0
 		coyote_remaining = 0.0
+		squash = -0.16
+		squash_vel = 0.0
+		_spawn_dust(3, 14.0)
 
 	var axis: float = Input.get_axis("ui_left", "ui_right")
 	if Input.is_key_pressed(KEY_A):
@@ -163,7 +174,10 @@ func _physics_process(delta: float) -> void:
 		if attack_remaining <= 0.0:
 			_finish_attack()
 	else:
-		velocity.x = axis * speed
+		var accel: float = 4200.0 if absf(axis) < 0.01 else 3400.0
+		if not is_on_floor():
+			accel = 2000.0
+		velocity.x = move_toward(velocity.x, axis * speed, accel * delta)
 		if combo_window > 0.0:
 			combo_window -= delta
 			if queued_attack and combo < 3:
@@ -172,9 +186,16 @@ func _physics_process(delta: float) -> void:
 				combo = 0
 				queued_attack = false
 
+	var pre_vy: float = velocity.y
 	move_and_slide()
+	var landed: bool = is_on_floor() and not floor_prev
+	floor_prev = is_on_floor()
+	if landed and pre_vy > 160.0:
+		var impact: float = clampf(pre_vy / 1000.0, 0.0, 1.0)
+		squash = 0.08 + 0.20 * impact
+		squash_vel = 0.0
+		_spawn_dust(2 + int(impact * 4.0), 18.0)
 	_update_animation(axis, sprinting)
-	_update_pose(delta)
 	if attack_box.monitoring:
 		for area in attack_box.get_overlapping_areas():
 			_try_hit(area)
@@ -276,6 +297,56 @@ func _spawn_slash(index: int) -> void:
 
 # ---------------------------------------------------------------- анимация
 
+## Вся визуальная часть считается здесь, каждый кадр экрана (60 FPS и выше),
+## а не в физическом тике, поэтому движение плавное на любой частоте монитора.
+func _process(delta: float) -> void:
+	var dt: float = minf(delta, 1.0 / 30.0)
+	animation_clock += delta
+	# Пружина сжатия/растяжения: приземление, отрыв от земли.
+	squash_vel += (-320.0 * squash - 20.0 * squash_vel) * dt
+	squash += squash_vel * dt
+	# Фаза шага растёт со скоростью: 0..1 — полный цикл (два шага).
+	if is_on_floor() and not dead:
+		var before: int = floori(step_phase * 2.0)
+		step_phase += absf(velocity.x) * dt / STRIDE_LEN
+		if step_phase >= 1.0:
+			step_phase -= 1.0
+		var after: int = floori(step_phase * 2.0)
+		if after != before and absf(velocity.x) > 260.0:
+			_spawn_dust(2, 10.0)
+	step_angle = step_phase * TAU
+	_update_pose(delta)
+
+
+func _speed_ratio() -> float:
+	return clampf((absf(velocity.x) - 100.0) / 240.0, 0.0, 1.0)
+
+
+## Облачко пыли под ногами. Живёт в родителе героя, поэтому остаётся на месте.
+func _spawn_dust(count: int, spread: float) -> void:
+	var host: Node = get_parent()
+	if host == null:
+		return
+	for i in range(count):
+		var puff := Polygon2D.new()
+		var points := PackedVector2Array()
+		for j in range(10):
+			var a: float = float(j) / 10.0 * TAU
+			points.append(Vector2(cos(a), sin(a)) * randf_range(4.0, 8.0))
+		puff.polygon = points
+		puff.color = Color(0.80, 0.70, 0.54, 0.55)
+		puff.z_index = 1
+		host.add_child(puff)
+		puff.global_position = global_position + Vector2(randf_range(-spread, spread), foot_y - 4.0)
+		var drift := Vector2(randf_range(-26.0, 26.0) - velocity.x * 0.08, randf_range(-26.0, -8.0))
+		var tween := puff.create_tween()
+		tween.set_parallel(true)
+		tween.tween_property(puff, "position", puff.position + drift, 0.45)
+		tween.tween_property(puff, "scale", Vector2(2.2, 2.2), 0.45)
+		tween.tween_property(puff, "modulate:a", 0.0, 0.45)
+		tween.chain().tween_callback(puff.queue_free)
+
+
 func _update_animation(axis: float, sprinting: bool) -> void:
 	var state: String = "idle"
 	if dead:
@@ -286,8 +357,8 @@ func _update_animation(axis: float, sprinting: bool) -> void:
 		state = "attack_" + str(combo)
 	elif not is_on_floor():
 		state = "jump" if velocity.y < 0.0 else "fall"
-	elif absf(axis) > 0.01:
-		state = "run" if sprinting else "walk"
+	elif absf(velocity.x) > 25.0:
+		state = "run" if absf(velocity.x) > (move_speed + run_speed) * 0.5 else "walk"
 	pose_state = state
 	_play_if_available(state)
 
@@ -307,21 +378,18 @@ func _update_pose(delta: float) -> void:
 	var speed: float = 16.0
 
 	match pose_state:
-		"walk":
-			target_rot = 0.04 * f
+		"walk", "run":
+			speed = 40.0
+			var sr: float = _speed_ratio()
+			target_rot = lerpf(0.02, 0.07, sr) * f
 			if not has_real_walk:
-				target_off.y = -absf(sin(animation_clock * 9.0)) * 5.0
-				target_rot = 0.06 * f + sin(animation_clock * 9.0) * 0.015
-		"run":
-			target_rot = 0.13 * f
-			target_scale = Vector2(1.03, 0.97)
-			target_off.y = -absf(sin(animation_clock * 13.0)) * 8.0
-		"jump":
-			target_scale = Vector2(0.93, 1.08)
-			target_rot = 0.08 * f
-		"fall":
-			target_scale = Vector2(0.96, 1.05)
-			target_rot = -0.05 * f
+				# Тело выше всего, когда ноги под ним, и ниже в момент шага.
+				target_off.y = -absf(cos(step_angle)) * lerpf(3.0, 8.0, sr)
+				target_scale = Vector2(1.0 + 0.02 * sr, 1.0 - 0.02 * sr)
+		"jump", "fall":
+			var stretch: float = clampf(absf(velocity.y) / 900.0, 0.0, 1.0) * 0.10
+			target_scale = Vector2(1.0 - stretch * 0.4, 1.0 + stretch)
+			target_rot = (0.06 if pose_state == "jump" else -0.04) * f
 		"attack_1", "attack_2", "attack_3":
 			speed = 28.0
 			var big: float = 1.4 if pose_state == "attack_3" else 1.0
@@ -350,7 +418,7 @@ func _update_pose(delta: float) -> void:
 	pose_rot = lerpf(pose_rot, target_rot, k)
 	pose_off = pose_off.lerp(target_off, k)
 
-	art.scale = Vector2(ART_SCALE, ART_SCALE) * pose_scale
+	art.scale = Vector2(ART_SCALE, ART_SCALE) * pose_scale * Vector2(1.0 + squash * 0.6, 1.0 - squash)
 	art.rotation = pose_rot
 	art.position = Vector2(0.0, foot_y) + pose_off
 
@@ -446,32 +514,36 @@ func _build_rig() -> void:
 	rig.name = "LegRig"
 	rig.visible = false
 	add_child(rig)
-	# Порядок отрисовки: ноги сзади, потом плащ и верх тела.
-	rig_leg_back = _make_rig_sprite(atlas)
-	rig_leg_front = _make_rig_sprite(atlas)
-	rig_cape = _make_rig_sprite(atlas)
-	rig_top = _make_rig_sprite(atlas)
+	var half_w: float = float(FRAME_W) * 0.5
+	# Порядок отрисовки: ноги сзади, потом плащ, потом верх тела на шарнире в бёдрах.
+	rig_leg_back = _make_rig_sprite(atlas, rig)
+	rig_leg_front = _make_rig_sprite(atlas, rig)
+	rig_cape = _make_rig_sprite(atlas, rig)
+	rig_torso = Node2D.new()
+	rig_torso.position = Vector2(0.0, HIP_Y - FEET_ROW)
+	rig.add_child(rig_torso)
+	rig_top = _make_rig_sprite(atlas, rig_torso)
 	# Начало координат узла rig — под ногами героя, единицы — пиксели кадра.
-	rig_leg_back.position = Vector2(PIVOT_BACK_X - float(FRAME_W) * 0.5, HIP_Y - FEET_ROW)
+	rig_leg_back.position = Vector2(PIVOT_BACK_X - half_w, HIP_Y - FEET_ROW)
 	rig_leg_back.offset = Vector2(LEG_X0 - PIVOT_BACK_X, 0.0)
-	rig_leg_front.position = Vector2(PIVOT_FRONT_X - float(FRAME_W) * 0.5, HIP_Y - FEET_ROW)
+	rig_leg_front.position = Vector2(PIVOT_FRONT_X - half_w, HIP_Y - FEET_ROW)
 	rig_leg_front.offset = Vector2(LEG_SPLIT - PIVOT_FRONT_X, 0.0)
-	rig_cape.position = Vector2(-float(FRAME_W) * 0.5, HIP_Y - FEET_ROW)
-	rig_top.position = Vector2(-float(FRAME_W) * 0.5, -FEET_ROW)
+	rig_cape.position = Vector2(-half_w, HIP_Y - FEET_ROW)
+	rig_top.position = Vector2(-half_w, -HIP_Y)
 	# Тот же материал, что и у основного спрайта: белая форма работает и на ногах.
 	if art.material != null:
 		for part in [rig_leg_back, rig_leg_front, rig_cape, rig_top]:
 			part.material = art.material
 
 
-func _make_rig_sprite(atlas: Texture2D) -> Sprite2D:
+func _make_rig_sprite(atlas: Texture2D, parent: Node) -> Sprite2D:
 	var sprite := Sprite2D.new()
 	sprite.texture = atlas
 	sprite.centered = false
 	sprite.region_enabled = true
 	sprite.region_filter_clip_enabled = true
 	sprite.texture_filter = CanvasItem.TEXTURE_FILTER_LINEAR
-	rig.add_child(sprite)
+	parent.add_child(sprite)
 	return sprite
 
 
@@ -483,7 +555,10 @@ func _update_rig(delta: float) -> void:
 	rig.visible = use_rig
 	art.visible = not use_rig
 	if not use_rig:
+		torso_rot = 0.0
+		torso_vel = 0.0
 		return
+	var dt: float = minf(delta, 1.0 / 30.0)
 
 	# Текущий кадр idle: плащ и волосы продолжают колыхаться.
 	var tile := rig_tiles[int(animation_clock * rig_fps) % rig_tiles.size()] as AtlasTexture
@@ -499,33 +574,36 @@ func _update_rig(delta: float) -> void:
 	var target_front: float = 0.0
 	var lift_back: float = 0.0
 	var lift_front: float = 0.0
+	var torso_target: float = 0.0
 	match pose_state:
-		"walk":
-			rig_phase += delta * 9.0
-			var s: float = sin(rig_phase)
-			target_back = deg_to_rad(20.0) * s
+		"walk", "run":
+			var sr: float = _speed_ratio()
+			# При остановке шаг плавно сходит на нет, без рывка в стойку.
+			var fade: float = clampf(absf(velocity.x) / 120.0, 0.0, 1.0)
+			var amp: float = deg_to_rad(lerpf(12.0, 34.0, sr)) * fade
+			var lift: float = lerpf(6.0, 13.0, sr) * fade
+			target_back = amp * sin(step_angle)
 			target_front = -target_back
-			lift_back = maxf(0.0, s) * 7.0
-			lift_front = maxf(0.0, -s) * 7.0
-		"run":
-			rig_phase += delta * 13.0
-			var s: float = sin(rig_phase)
-			target_back = deg_to_rad(32.0) * s
-			target_front = -target_back
-			lift_back = maxf(0.0, s) * 12.0
-			lift_front = maxf(0.0, -s) * 12.0
+			# Ступня поднимается в середине махового движения, когда нога идёт вперёд.
+			lift_back = lift * maxf(0.0, -cos(step_angle))
+			lift_front = lift * maxf(0.0, cos(step_angle))
+			torso_target = lerpf(0.03, 0.11, sr) + sin(step_angle * 2.0) * 0.02 * fade
 		"jump":
-			target_back = deg_to_rad(28.0)
-			target_front = deg_to_rad(-32.0)
-			lift_back = 6.0
-			lift_front = 12.0
+			var rise: float = clampf(-velocity.y / absf(jump_velocity), 0.0, 1.0)
+			target_back = deg_to_rad(10.0 + 24.0 * rise)
+			target_front = -deg_to_rad(14.0 + 26.0 * rise)
+			lift_back = 4.0 + 6.0 * rise
+			lift_front = 6.0 + 10.0 * rise
+			torso_target = 0.05
 		"fall":
-			target_back = deg_to_rad(10.0)
-			target_front = deg_to_rad(-14.0)
-			lift_back = 4.0
-			lift_front = 6.0
+			var drop: float = clampf(velocity.y / 700.0, 0.0, 1.0)
+			target_back = deg_to_rad(10.0 - 6.0 * drop)
+			target_front = -deg_to_rad(14.0 - 8.0 * drop)
+			lift_back = 4.0 - 2.0 * drop
+			lift_front = 6.0 - 4.0 * drop
+			torso_target = -0.02
 
-	var k: float = 1.0 if delta <= 0.0 else 1.0 - exp(-30.0 * delta)
+	var k: float = 1.0 if delta <= 0.0 else 1.0 - exp(-40.0 * delta)
 	leg_back_rot = lerpf(leg_back_rot, target_back, k)
 	leg_front_rot = lerpf(leg_front_rot, target_front, k)
 	leg_back_lift = lerpf(leg_back_lift, lift_back, k)
@@ -534,6 +612,11 @@ func _update_rig(delta: float) -> void:
 	rig_leg_front.rotation = leg_front_rot
 	rig_leg_back.position.y = HIP_Y - FEET_ROW - leg_back_lift
 	rig_leg_front.position.y = HIP_Y - FEET_ROW - leg_front_lift
+
+	# Корпус наклоняется вокруг бёдер на пружине: при смене темпа он слегка запаздывает и покачивается.
+	torso_vel += ((torso_target - torso_rot) * 260.0 - torso_vel * 17.0) * dt
+	torso_rot += torso_vel * dt
+	rig_torso.rotation = torso_rot
 
 	# Тот же трансформ, что у основного спрайта; взгляд влево — зеркало по X.
 	rig.position = art.position
